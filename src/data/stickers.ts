@@ -83,8 +83,8 @@ const TEAMS = [
   { section: "Costa Rica", code: "CRC" },
 ];
 
-const FWC_STICKERS: Sticker[] = Array.from({ length: 20 }, (_, index) => {
-  const number = index + 1;
+const FWC_STICKERS: Sticker[] = Array.from({ length: 21 }, (_, index) => {
+  const number = index;
 
   return {
     id: `FWC-${number}`,
@@ -99,8 +99,8 @@ const FWC_STICKERS: Sticker[] = Array.from({ length: 20 }, (_, index) => {
 
 function generateTeamStickers(): Sticker[] {
   return TEAMS.flatMap((team) =>
-    Array.from({ length: 20 }, (_, index) => {
-      const number = index + 1;
+    Array.from({ length: 21 }, (_, index) => {
+      const number = index;
 
       return {
         id: `${team.code}-${number}`,
