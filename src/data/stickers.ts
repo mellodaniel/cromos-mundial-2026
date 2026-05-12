@@ -70,7 +70,7 @@ const TEAMS = [
   { section: "Argentina", code: "ARG" },
   { section: "Argélia", code: "ALG" },
 
-  // Temporários até termos a checklist oficial completa.
+  // Secções adicionais para completar a base inicial.
   { section: "Portugal", code: "POR" },
   { section: "Inglaterra", code: "ENG" },
   { section: "Itália", code: "ITA" },
@@ -99,8 +99,8 @@ const FWC_STICKERS: Sticker[] = Array.from({ length: 21 }, (_, index) => {
 
 function generateTeamStickers(): Sticker[] {
   return TEAMS.flatMap((team) =>
-    Array.from({ length: 21 }, (_, index) => {
-      const number = index;
+    Array.from({ length: 20 }, (_, index) => {
+      const number = index + 1;
 
       return {
         id: `${team.code}-${number}`,
