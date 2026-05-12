@@ -73,14 +73,14 @@ const TEAMS = [
   // Secções adicionais para completar a base inicial.
   { section: "Portugal", code: "POR" },
   { section: "Inglaterra", code: "ENG" },
-  { section: "Itália", code: "ITA" },
+  { section: "Congo", code: "COD" },
   { section: "Croácia", code: "CRO" },
   { section: "Colômbia", code: "COL" },
-  { section: "Dinamarca", code: "DEN" },
-  { section: "Polónia", code: "POL" },
+  { section: "Uzbekistan", code: "UZB" },
+  { section: "Ghana", code: "GHA" },
   { section: "Áustria", code: "AUT" },
   { section: "Jordânia", code: "JOR" },
-  { section: "Costa Rica", code: "CRC" },
+  { section: "Panama", code: "PAN" },
 ];
 
 const FWC_STICKERS: Sticker[] = Array.from({ length: 21 }, (_, index) => {
