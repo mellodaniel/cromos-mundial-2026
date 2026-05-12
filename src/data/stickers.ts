@@ -83,7 +83,7 @@ const TEAMS = [
   { section: "Panama", code: "PAN" },
 ];
 
-const FWC_STICKERS: Sticker[] = Array.from({ length: 21 }, (_, index) => {
+const FWC_STICKERS: Sticker[] = Array.from({ length: 20 }, (_, index) => {
   const number = index;
 
   return {
