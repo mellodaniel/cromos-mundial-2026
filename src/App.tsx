@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
+import { createWorker } from "tesseract.js";
 import "./index.css";
 import {
   ALL_STICKERS,
@@ -19,6 +20,11 @@ type AccordionSection =
   | "backup";
 
 type CollectionState = Record<string, { diego: number; arthur: number }>;
+
+type ParsedCodesResult = {
+  valid: Sticker[];
+  invalid: string[];
+};
 
 const STORAGE_KEY = "cromos-mundial-2026-state-v1";
 
@@ -54,6 +60,79 @@ function getStatus(quantity: number) {
   return "Repetido";
 }
 
+function normalizeCode(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[_–—]/g, "-")
+    .replace(/\s+/g, " ");
+}
+
+function parseStickerCodes(input: string): ParsedCodesResult {
+  const stickerMap = new Map<string, Sticker>();
+
+  ALL_STICKERS.forEach((sticker) => {
+    stickerMap.set(`${sticker.code}-${sticker.number}`, sticker);
+    stickerMap.set(`${sticker.code} ${sticker.number}`, sticker);
+    stickerMap.set(sticker.label.toUpperCase(), sticker);
+  });
+
+  const matches = input
+    .toUpperCase()
+    .replace(/CC\s+/g, "CC")
+    .match(/\b(FWC|[A-Z]{2,3})[\s-]?\d{1,2}\b/g);
+
+  if (!matches) {
+    return { valid: [], invalid: [] };
+  }
+
+  const valid: Sticker[] = [];
+  const invalid: string[] = [];
+  const alreadyAdded = new Set<string>();
+
+  matches.forEach((rawCode) => {
+    const normalized = normalizeCode(rawCode).replace(/^CC\s?/, "CC");
+    const codeMatch = normalized.match(/^([A-Z]{2,3}|FWC)[\s-]?(\d{1,2})$/);
+
+    if (!codeMatch) {
+      invalid.push(rawCode);
+      return;
+    }
+
+    const code = codeMatch[1];
+    const number = Number(codeMatch[2]);
+
+    const possibleKeys = [
+      `${code}-${number}`,
+      `${code} ${number}`,
+      `${code}${number}`,
+    ];
+
+    let sticker: Sticker | undefined;
+
+    for (const key of possibleKeys) {
+      sticker = stickerMap.get(key);
+      if (sticker) break;
+    }
+
+    if (!sticker && code === "CC") {
+      sticker = stickerMap.get(`CC${number}`) ?? stickerMap.get(`CC-${number}`);
+    }
+
+    if (!sticker) {
+      invalid.push(rawCode);
+      return;
+    }
+
+    if (!alreadyAdded.has(sticker.id)) {
+      valid.push(sticker);
+      alreadyAdded.add(sticker.id);
+    }
+  });
+
+  return { valid, invalid };
+}
+
 function App() {
   const [owner, setOwner] = useState<AlbumOwner>("diego");
   const [state, setState] = useState<CollectionState>(() => loadInitialState());
@@ -62,6 +141,13 @@ function App() {
   const [search, setSearch] = useState("");
   const [shareType, setShareType] = useState<ShareType>(null);
   const [reportTab, setReportTab] = useState<ReportTab>("missing");
+  const [quickInput, setQuickInput] = useState("");
+  const [quickValid, setQuickValid] = useState<Sticker[]>([]);
+  const [quickInvalid, setQuickInvalid] = useState<string[]>([]);
+  const [ocrText, setOcrText] = useState("");
+  const [ocrValid, setOcrValid] = useState<Sticker[]>([]);
+  const [ocrInvalid, setOcrInvalid] = useState<string[]>([]);
+  const [isReadingImage, setIsReadingImage] = useState(false);
   const [openSections, setOpenSections] = useState<
     Record<AccordionSection, boolean>
   >({
@@ -78,11 +164,35 @@ function App() {
     return ["Todas", ...Array.from(new Set(ALL_STICKERS.map((s) => s.section)))];
   }, []);
 
+  const currentUserName =
+    USERS.find((user) => user.id === owner)?.name ?? "Diego";
+
   const toggleSection = (section: AccordionSection) => {
     setOpenSections((current) => ({
       ...current,
       [section]: !current[section],
     }));
+  };
+
+  const addStickersToOwner = (stickers: Sticker[], ownerId: AlbumOwner) => {
+    if (stickers.length === 0) return;
+
+    setState((current) => {
+      const nextState: CollectionState = { ...current };
+
+      stickers.forEach((sticker) => {
+        const currentQty = getQuantity(nextState, sticker.id, ownerId);
+
+        nextState[sticker.id] = {
+          diego: nextState[sticker.id]?.diego ?? 0,
+          arthur: nextState[sticker.id]?.arthur ?? 0,
+          [ownerId]: currentQty + 1,
+        };
+      });
+
+      saveState(nextState);
+      return nextState;
+    });
   };
 
   const updateQuantity = (
@@ -106,6 +216,64 @@ function App() {
       saveState(nextState);
       return nextState;
     });
+  };
+
+  const handleQuickInputChange = (value: string) => {
+    setQuickInput(value);
+    const result = parseStickerCodes(value);
+    setQuickValid(result.valid);
+    setQuickInvalid(result.invalid);
+  };
+
+  const confirmQuickAdd = () => {
+    addStickersToOwner(quickValid, owner);
+
+    if (quickValid.length > 0) {
+      alert(`${quickValid.length} cromo(s) adicionados à caderneta do ${currentUserName}.`);
+    }
+
+    setQuickInput("");
+    setQuickValid([]);
+    setQuickInvalid([]);
+  };
+
+  const handleImageUpload = async (file: File | null) => {
+    if (!file) return;
+
+    setIsReadingImage(true);
+    setOcrText("");
+    setOcrValid([]);
+    setOcrInvalid([]);
+
+    try {
+      const worker = await createWorker("eng");
+      const result = await worker.recognize(file);
+      await worker.terminate();
+
+      const text = result.data.text;
+      const parsed = parseStickerCodes(text);
+
+      setOcrText(text);
+      setOcrValid(parsed.valid);
+      setOcrInvalid(parsed.invalid);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível ler a imagem. Tenta com uma foto mais nítida.");
+    } finally {
+      setIsReadingImage(false);
+    }
+  };
+
+  const confirmOcrAdd = () => {
+    addStickersToOwner(ocrValid, owner);
+
+    if (ocrValid.length > 0) {
+      alert(`${ocrValid.length} cromo(s) adicionados à caderneta do ${currentUserName}.`);
+    }
+
+    setOcrText("");
+    setOcrValid([]);
+    setOcrInvalid([]);
   };
 
   const resetAll = () => {
@@ -347,9 +515,6 @@ function App() {
     }, 150);
   };
 
-  const currentUserName =
-    USERS.find((user) => user.id === owner)?.name ?? "Diego";
-
   return (
     <main className="app">
       <header className="hero">
@@ -475,6 +640,114 @@ function App() {
 
           {openSections.manage && (
             <div className="accordion-content">
+              <section className="quick-add-panel">
+                <div className="quick-add-box">
+                  <h2>Entrada rápida por texto</h2>
+                  <p>
+                    Escreve códigos como <strong>BRA 10</strong>,{" "}
+                    <strong>ARG 17</strong>, <strong>CC1</strong> ou{" "}
+                    <strong>FWC 7</strong>. Podes separar por vírgula, espaço ou
+                    nova linha.
+                  </p>
+
+                  <textarea
+                    value={quickInput}
+                    onChange={(event) =>
+                      handleQuickInputChange(event.target.value)
+                    }
+                    placeholder="Ex: BRA 10, ARG 17, CC1, FWC 7"
+                  />
+
+                  <div className="quick-results">
+                    <strong>Válidos: {quickValid.length}</strong>
+                    <strong>Inválidos: {quickInvalid.length}</strong>
+                  </div>
+
+                  {quickValid.length > 0 && (
+                    <div className="mini-list quick-list">
+                      {quickValid.map((sticker) => (
+                        <span key={sticker.id}>{sticker.label}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {quickInvalid.length > 0 && (
+                    <div className="invalid-list">
+                      Não encontrados: {quickInvalid.join(", ")}
+                    </div>
+                  )}
+
+                  <button
+                    className="primary-action"
+                    onClick={confirmQuickAdd}
+                    disabled={quickValid.length === 0}
+                  >
+                    Adicionar à caderneta do {currentUserName}
+                  </button>
+                </div>
+
+                <div className="quick-add-box">
+                  <h2>Entrada rápida por imagem</h2>
+                  <p>
+                    Envia uma foto onde apareçam os códigos dos cromos. A app
+                    tenta ler os códigos e pede confirmação antes de adicionar.
+                  </p>
+
+                  <label className="image-upload-button">
+                    {isReadingImage ? "A ler imagem..." : "Escolher imagem"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        handleImageUpload(event.target.files?.[0] ?? null)
+                      }
+                      disabled={isReadingImage}
+                    />
+                  </label>
+
+                  {isReadingImage && (
+                    <div className="ocr-loading">
+                      A processar imagem. Pode demorar alguns segundos...
+                    </div>
+                  )}
+
+                  {ocrValid.length > 0 && (
+                    <>
+                      <div className="quick-results">
+                        <strong>Códigos encontrados: {ocrValid.length}</strong>
+                        <strong>Inválidos: {ocrInvalid.length}</strong>
+                      </div>
+
+                      <div className="mini-list quick-list">
+                        {ocrValid.map((sticker) => (
+                          <span key={sticker.id}>{sticker.label}</span>
+                        ))}
+                      </div>
+
+                      <button
+                        className="primary-action"
+                        onClick={confirmOcrAdd}
+                      >
+                        Confirmar e adicionar ao {currentUserName}
+                      </button>
+                    </>
+                  )}
+
+                  {ocrInvalid.length > 0 && (
+                    <div className="invalid-list">
+                      Não encontrados: {ocrInvalid.join(", ")}
+                    </div>
+                  )}
+
+                  {ocrText && (
+                    <details className="ocr-details">
+                      <summary>Ver texto lido pela imagem</summary>
+                      <pre>{ocrText}</pre>
+                    </details>
+                  )}
+                </div>
+              </section>
+
               <section className="controls">
                 <div className="control-group">
                   <label>Secção / País</label>

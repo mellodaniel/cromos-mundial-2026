@@ -23,15 +23,21 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 button {
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
@@ -285,6 +291,116 @@ button:hover {
 
 .accordion-content {
   padding: 0 22px 22px;
+}
+
+.quick-add-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.quick-add-box {
+  padding: 18px;
+  border: 1px solid #d9e2ef;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.quick-add-box h2 {
+  margin: 0 0 8px;
+  color: #123b66;
+  font-size: 20px;
+}
+
+.quick-add-box p {
+  margin: 0 0 14px;
+  color: #667085;
+  line-height: 1.45;
+}
+
+.quick-add-box textarea {
+  width: 100%;
+  min-height: 115px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 14px;
+  outline: none;
+}
+
+.quick-add-box textarea:focus {
+  border-color: #164878;
+  box-shadow: 0 0 0 4px rgba(22, 72, 120, 0.12);
+}
+
+.quick-results {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0;
+  color: #123b66;
+}
+
+.quick-list {
+  max-height: 120px;
+  margin-bottom: 12px;
+}
+
+.invalid-list {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: #b42318;
+  background: #fee4e2;
+  font-weight: 800;
+}
+
+.primary-action,
+.image-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 16px;
+  color: #101828;
+  background: #ffd45a;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.image-upload-button input {
+  display: none;
+}
+
+.ocr-loading {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  color: #123b66;
+  background: #eaf1fb;
+  font-weight: 800;
+}
+
+.ocr-details {
+  margin-top: 14px;
+  color: #344054;
+}
+
+.ocr-details summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.ocr-details pre {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  padding: 12px;
+  border-radius: 12px;
+  background: white;
 }
 
 .controls {
@@ -719,6 +835,10 @@ button:hover {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .quick-add-panel {
+    grid-template-columns: 1fr;
+  }
+
   .controls {
     grid-template-columns: 1fr;
   }
@@ -815,7 +935,9 @@ button:hover {
 
   .share-buttons button,
   .backup-actions button,
-  .import-button {
+  .import-button,
+  .primary-action,
+  .image-upload-button {
     width: 100%;
   }
 }
