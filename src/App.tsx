@@ -17,7 +17,8 @@ type AccordionSection =
   | "reports"
   | "progress"
   | "share"
-  | "backup";
+  | "backup"
+  | "history";
 
 type CollectionState = Record<string, { diego: number; arthur: number }>;
 
@@ -26,15 +27,30 @@ type ParsedCodesResult = {
   invalid: string[];
 };
 
+type LastAddResult = {
+  title: string;
+  added: Sticker[];
+  newStickers: Sticker[];
+  repeatedStickers: Sticker[];
+};
+
+type HistoryEntry = {
+  id: string;
+  date: string;
+  text: string;
+};
+
+type ImportMode = "replace" | "merge";
+
 const STORAGE_KEY = "cromos-mundial-2026-state-v1";
+const HISTORY_KEY = "cromos-mundial-2026-history-v1";
+const MAX_HISTORY = 40;
+const MAX_UNDO = 20;
 
 function loadInitialState(): CollectionState {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (saved) {
-      return JSON.parse(saved);
-    }
+    if (saved) return JSON.parse(saved);
   } catch {
     console.warn("Não foi possível carregar os dados guardados.");
   }
@@ -42,8 +58,23 @@ function loadInitialState(): CollectionState {
   return {};
 }
 
+function loadHistory(): HistoryEntry[] {
+  try {
+    const saved = localStorage.getItem(HISTORY_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {
+    console.warn("Não foi possível carregar o histórico.");
+  }
+
+  return [];
+}
+
 function saveState(state: CollectionState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function saveHistory(history: HistoryEntry[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
 
 function getQuantity(
@@ -74,6 +105,7 @@ function parseStickerCodes(input: string): ParsedCodesResult {
   ALL_STICKERS.forEach((sticker) => {
     stickerMap.set(`${sticker.code}-${sticker.number}`, sticker);
     stickerMap.set(`${sticker.code} ${sticker.number}`, sticker);
+    stickerMap.set(`${sticker.code}${sticker.number}`, sticker);
     stickerMap.set(sticker.label.toUpperCase(), sticker);
   });
 
@@ -82,9 +114,7 @@ function parseStickerCodes(input: string): ParsedCodesResult {
     .replace(/CC\s+/g, "CC")
     .match(/\b(FWC|[A-Z]{2,3})[\s-]?\d{1,2}\b/g);
 
-  if (!matches) {
-    return { valid: [], invalid: [] };
-  }
+  if (!matches) return { valid: [], invalid: [] };
 
   const valid: Sticker[] = [];
   const invalid: string[] = [];
@@ -133,9 +163,23 @@ function parseStickerCodes(input: string): ParsedCodesResult {
   return { valid, invalid };
 }
 
+function formatCodes(stickers: Sticker[]) {
+  return stickers.map((sticker) => sticker.label).join(", ");
+}
+
+function groupBySection(stickers: Sticker[]) {
+  return stickers.reduce<Record<string, Sticker[]>>((groups, sticker) => {
+    if (!groups[sticker.section]) groups[sticker.section] = [];
+    groups[sticker.section].push(sticker);
+    return groups;
+  }, {});
+}
+
 function App() {
   const [owner, setOwner] = useState<AlbumOwner>("diego");
   const [state, setState] = useState<CollectionState>(() => loadInitialState());
+  const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory());
+  const [undoStack, setUndoStack] = useState<CollectionState[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>("Todas");
   const [filter, setFilter] = useState<FilterType>("all");
   const [search, setSearch] = useState("");
@@ -145,9 +189,12 @@ function App() {
   const [quickValid, setQuickValid] = useState<Sticker[]>([]);
   const [quickInvalid, setQuickInvalid] = useState<string[]>([]);
   const [ocrText, setOcrText] = useState("");
-  const [ocrValid, setOcrValid] = useState<Sticker[]>([]);
+  const [ocrReview, setOcrReview] = useState<Sticker[]>([]);
   const [ocrInvalid, setOcrInvalid] = useState<string[]>([]);
   const [isReadingImage, setIsReadingImage] = useState(false);
+  const [lastAddResult, setLastAddResult] = useState<LastAddResult | null>(null);
+  const [importMode, setImportMode] = useState<ImportMode>("replace");
+  const [copyFeedback, setCopyFeedback] = useState("");
   const [openSections, setOpenSections] = useState<
     Record<AccordionSection, boolean>
   >({
@@ -156,6 +203,7 @@ function App() {
     progress: false,
     share: false,
     backup: false,
+    history: false,
   });
 
   const shareCardRef = useRef<HTMLDivElement | null>(null);
@@ -167,6 +215,50 @@ function App() {
   const currentUserName =
     USERS.find((user) => user.id === owner)?.name ?? "Diego";
 
+  const addHistoryEntry = (text: string) => {
+    const entry: HistoryEntry = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      date: new Date().toISOString(),
+      text,
+    };
+
+    setHistory((current) => {
+      const next = [entry, ...current].slice(0, MAX_HISTORY);
+      saveHistory(next);
+      return next;
+    });
+  };
+
+  const commitState = (
+    producer: (current: CollectionState) => CollectionState,
+    historyText?: string
+  ) => {
+    setState((current) => {
+      const next = producer(current);
+
+      setUndoStack((stack) => [current, ...stack].slice(0, MAX_UNDO));
+      saveState(next);
+
+      if (historyText) addHistoryEntry(historyText);
+
+      return next;
+    });
+  };
+
+  const undoLastAction = () => {
+    const previous = undoStack[0];
+
+    if (!previous) {
+      alert("Não há alterações para desfazer.");
+      return;
+    }
+
+    setUndoStack((current) => current.slice(1));
+    setState(previous);
+    saveState(previous);
+    addHistoryEntry("Última alteração desfeita");
+  };
+
   const toggleSection = (section: AccordionSection) => {
     setOpenSections((current) => ({
       ...current,
@@ -174,24 +266,46 @@ function App() {
     }));
   };
 
-  const addStickersToOwner = (stickers: Sticker[], ownerId: AlbumOwner) => {
+  const addStickersToOwner = (
+    stickers: Sticker[],
+    ownerId: AlbumOwner,
+    source: string
+  ) => {
     if (stickers.length === 0) return;
 
-    setState((current) => {
-      const nextState: CollectionState = { ...current };
+    const newStickers: Sticker[] = [];
+    const repeatedStickers: Sticker[] = [];
 
-      stickers.forEach((sticker) => {
-        const currentQty = getQuantity(nextState, sticker.id, ownerId);
+    stickers.forEach((sticker) => {
+      const currentQty = getQuantity(state, sticker.id, ownerId);
+      if (currentQty === 0) newStickers.push(sticker);
+      else repeatedStickers.push(sticker);
+    });
 
-        nextState[sticker.id] = {
-          diego: nextState[sticker.id]?.diego ?? 0,
-          arthur: nextState[sticker.id]?.arthur ?? 0,
-          [ownerId]: currentQty + 1,
-        };
-      });
+    commitState(
+      (current) => {
+        const nextState: CollectionState = { ...current };
 
-      saveState(nextState);
-      return nextState;
+        stickers.forEach((sticker) => {
+          const currentQty = getQuantity(nextState, sticker.id, ownerId);
+
+          nextState[sticker.id] = {
+            diego: nextState[sticker.id]?.diego ?? 0,
+            arthur: nextState[sticker.id]?.arthur ?? 0,
+            [ownerId]: currentQty + 1,
+          };
+        });
+
+        return nextState;
+      },
+      `${source}: ${stickers.length} cromo(s) adicionados ao ${currentUserName}`
+    );
+
+    setLastAddResult({
+      title: `${stickers.length} cromo(s) adicionados ao ${currentUserName}`,
+      added: stickers,
+      newStickers,
+      repeatedStickers,
     });
   };
 
@@ -200,22 +314,26 @@ function App() {
     ownerId: AlbumOwner,
     change: number
   ) => {
-    setState((current) => {
-      const currentQty = getQuantity(current, stickerId, ownerId);
-      const nextQty = Math.max(0, currentQty + change);
+    const sticker = ALL_STICKERS.find((item) => item.id === stickerId);
 
-      const nextState = {
-        ...current,
-        [stickerId]: {
-          diego: current[stickerId]?.diego ?? 0,
-          arthur: current[stickerId]?.arthur ?? 0,
-          [ownerId]: nextQty,
-        },
-      };
+    commitState(
+      (current) => {
+        const currentQty = getQuantity(current, stickerId, ownerId);
+        const nextQty = Math.max(0, currentQty + change);
 
-      saveState(nextState);
-      return nextState;
-    });
+        return {
+          ...current,
+          [stickerId]: {
+            diego: current[stickerId]?.diego ?? 0,
+            arthur: current[stickerId]?.arthur ?? 0,
+            [ownerId]: nextQty,
+          },
+        };
+      },
+      `${currentUserName}: ${change > 0 ? "adicionou" : "removeu"} ${
+        sticker?.label ?? stickerId
+      }`
+    );
   };
 
   const handleQuickInputChange = (value: string) => {
@@ -226,12 +344,7 @@ function App() {
   };
 
   const confirmQuickAdd = () => {
-    addStickersToOwner(quickValid, owner);
-
-    if (quickValid.length > 0) {
-      alert(`${quickValid.length} cromo(s) adicionados à caderneta do ${currentUserName}.`);
-    }
-
+    addStickersToOwner(quickValid, owner, "Entrada rápida por texto");
     setQuickInput("");
     setQuickValid([]);
     setQuickInvalid([]);
@@ -242,7 +355,7 @@ function App() {
 
     setIsReadingImage(true);
     setOcrText("");
-    setOcrValid([]);
+    setOcrReview([]);
     setOcrInvalid([]);
 
     try {
@@ -254,7 +367,7 @@ function App() {
       const parsed = parseStickerCodes(text);
 
       setOcrText(text);
-      setOcrValid(parsed.valid);
+      setOcrReview(parsed.valid);
       setOcrInvalid(parsed.invalid);
     } catch (error) {
       console.error(error);
@@ -264,15 +377,16 @@ function App() {
     }
   };
 
+  const removeOcrReviewSticker = (stickerId: string) => {
+    setOcrReview((current) =>
+      current.filter((sticker) => sticker.id !== stickerId)
+    );
+  };
+
   const confirmOcrAdd = () => {
-    addStickersToOwner(ocrValid, owner);
-
-    if (ocrValid.length > 0) {
-      alert(`${ocrValid.length} cromo(s) adicionados à caderneta do ${currentUserName}.`);
-    }
-
+    addStickersToOwner(ocrReview, owner, "Entrada rápida por imagem");
     setOcrText("");
-    setOcrValid([]);
+    setOcrReview([]);
     setOcrInvalid([]);
   };
 
@@ -283,8 +397,10 @@ function App() {
 
     if (!confirmReset) return;
 
+    setUndoStack((stack) => [state, ...stack].slice(0, MAX_UNDO));
     localStorage.removeItem(STORAGE_KEY);
     setState({});
+    addHistoryEntry("Todos os dados foram apagados");
   };
 
   const exportBackup = () => {
@@ -307,6 +423,34 @@ function App() {
     link.click();
 
     URL.revokeObjectURL(url);
+    addHistoryEntry("Backup exportado");
+  };
+
+  const mergeStates = (
+    currentState: CollectionState,
+    importedState: CollectionState
+  ): CollectionState => {
+    const allIds = new Set([
+      ...Object.keys(currentState),
+      ...Object.keys(importedState),
+    ]);
+
+    const merged: CollectionState = {};
+
+    allIds.forEach((id) => {
+      merged[id] = {
+        diego: Math.max(
+          currentState[id]?.diego ?? 0,
+          importedState[id]?.diego ?? 0
+        ),
+        arthur: Math.max(
+          currentState[id]?.arthur ?? 0,
+          importedState[id]?.arthur ?? 0
+        ),
+      };
+    });
+
+    return merged;
   };
 
   const importBackup = (file: File | null) => {
@@ -317,12 +461,23 @@ function App() {
     reader.onload = () => {
       try {
         const parsed = JSON.parse(String(reader.result));
-        const importedState = parsed.collection ?? parsed;
+        const importedState: CollectionState = parsed.collection ?? parsed;
 
-        saveState(importedState);
-        setState(importedState);
+        commitState(
+          (current) =>
+            importMode === "merge"
+              ? mergeStates(current, importedState)
+              : importedState,
+          importMode === "merge"
+            ? "Backup importado e juntado aos dados atuais"
+            : "Backup importado e substituiu os dados atuais"
+        );
 
-        alert("Backup importado com sucesso.");
+        alert(
+          importMode === "merge"
+            ? "Backup juntado com sucesso."
+            : "Backup importado com sucesso."
+        );
       } catch {
         alert("Erro ao importar backup. Verifica se o ficheiro é válido.");
       }
@@ -379,14 +534,14 @@ function App() {
     };
   }, [state, owner]);
 
-  const diegoSummary = useMemo(() => {
+  const makeUserSummary = (ownerId: AlbumOwner) => {
     const total = ALL_STICKERS.length;
     let owned = 0;
     let missing = 0;
     let duplicates = 0;
 
     ALL_STICKERS.forEach((sticker) => {
-      const quantity = getQuantity(state, sticker.id, "diego");
+      const quantity = getQuantity(state, sticker.id, ownerId);
 
       if (quantity > 0) owned += 1;
       if (quantity === 0) missing += 1;
@@ -400,30 +555,10 @@ function App() {
       duplicates,
       percentage: total > 0 ? Math.round((owned / total) * 100) : 0,
     };
-  }, [state]);
+  };
 
-  const arthurSummary = useMemo(() => {
-    const total = ALL_STICKERS.length;
-    let owned = 0;
-    let missing = 0;
-    let duplicates = 0;
-
-    ALL_STICKERS.forEach((sticker) => {
-      const quantity = getQuantity(state, sticker.id, "arthur");
-
-      if (quantity > 0) owned += 1;
-      if (quantity === 0) missing += 1;
-      if (quantity > 1) duplicates += quantity - 1;
-    });
-
-    return {
-      total,
-      owned,
-      missing,
-      duplicates,
-      percentage: total > 0 ? Math.round((owned / total) * 100) : 0,
-    };
-  }, [state]);
+  const diegoSummary = useMemo(() => makeUserSummary("diego"), [state]);
+  const arthurSummary = useMemo(() => makeUserSummary("arthur"), [state]);
 
   const missingList = useMemo(() => {
     return ALL_STICKERS.filter(
@@ -473,17 +608,68 @@ function App() {
         ).length;
 
         const total = stickers.length;
+        const missing = total - owned;
         const percentage = total > 0 ? Math.round((owned / total) * 100) : 0;
 
-        return {
-          section,
-          owned,
-          total,
-          percentage,
-        };
+        return { section, owned, total, missing, percentage };
       })
       .sort((a, b) => b.percentage - a.percentage);
   }, [sections, state, owner]);
+
+  const nearlyComplete = useMemo(() => {
+    return sectionProgress
+      .filter((item) => item.missing > 0 && item.owned > 0)
+      .sort((a, b) => a.missing - b.missing || b.percentage - a.percentage)
+      .slice(0, 8);
+  }, [sectionProgress]);
+
+  const buildMissingText = (ownerId: AlbumOwner) => {
+    const userName = USERS.find((user) => user.id === ownerId)?.name ?? ownerId;
+    const stickers = ALL_STICKERS.filter(
+      (sticker) => getQuantity(state, sticker.id, ownerId) === 0
+    );
+
+    return `Cromos que faltam ao ${userName} — Mundial 2026\n\n${formatCodes(
+      stickers
+    )}\n\nQuem tiver para trocar, fala comigo ⚽`;
+  };
+
+  const buildDuplicatesText = (ownerId: AlbumOwner) => {
+    const userName = USERS.find((user) => user.id === ownerId)?.name ?? ownerId;
+    const stickers = ALL_STICKERS.filter(
+      (sticker) => getQuantity(state, sticker.id, ownerId) > 1
+    );
+
+    const codes = stickers
+      .map((sticker) => {
+        const quantity = getQuantity(state, sticker.id, ownerId);
+        return `${sticker.label} +${quantity - 1}`;
+      })
+      .join(", ");
+
+    return `Cromos repetidos do ${userName} — Mundial 2026\n\n${
+      codes || "Ainda não há repetidos."
+    }\n\nQuem quiser trocar, fala comigo ⚽`;
+  };
+
+  const buildExchangeText = () => {
+    return `Trocas possíveis entre Diego e Arthur — Mundial 2026\n\nDiego pode dar ao Arthur:\n${
+      formatCodes(exchangeSuggestions.diegoCanGiveToArthur) || "Nenhum"
+    }\n\nArthur pode dar ao Diego:\n${
+      formatCodes(exchangeSuggestions.arthurCanGiveToDiego) || "Nenhum"
+    }`;
+  };
+
+  const copyText = async (label: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(`${label} copiado.`);
+      addHistoryEntry(`${label} copiado para partilha`);
+      setTimeout(() => setCopyFeedback(""), 2500);
+    } catch {
+      alert("Não foi possível copiar. Tenta novamente.");
+    }
+  };
 
   const downloadShareImage = async (
     type: "duplicates" | "missing-diego" | "missing-arthur"
@@ -512,8 +698,22 @@ function App() {
       link.click();
 
       setShareType(null);
+      addHistoryEntry(`Imagem gerada: ${fileName}`);
     }, 150);
   };
+
+  const shareMissingDiego = ALL_STICKERS.filter(
+    (sticker) => getQuantity(state, sticker.id, "diego") === 0
+  );
+  const shareMissingArthur = ALL_STICKERS.filter(
+    (sticker) => getQuantity(state, sticker.id, "arthur") === 0
+  );
+  const shareDuplicatesDiego = ALL_STICKERS.filter(
+    (sticker) => getQuantity(state, sticker.id, "diego") > 1
+  );
+  const shareDuplicatesArthur = ALL_STICKERS.filter(
+    (sticker) => getQuantity(state, sticker.id, "arthur") > 1
+  );
 
   return (
     <main className="app">
@@ -625,7 +825,7 @@ function App() {
         >
           Ver repetidos
         </button>
-        <button onClick={() => toggleSection("share")}>Partilhar</button>
+        <button onClick={undoLastAction}>Desfazer</button>
       </section>
 
       <section className="accordion">
@@ -646,8 +846,7 @@ function App() {
                   <p>
                     Escreve códigos como <strong>BRA 10</strong>,{" "}
                     <strong>ARG 17</strong>, <strong>CC1</strong> ou{" "}
-                    <strong>FWC 7</strong>. Podes separar por vírgula, espaço ou
-                    nova linha.
+                    <strong>FWC 7</strong>.
                   </p>
 
                   <textarea
@@ -689,8 +888,8 @@ function App() {
                 <div className="quick-add-box">
                   <h2>Entrada rápida por imagem</h2>
                   <p>
-                    Envia uma foto onde apareçam os códigos dos cromos. A app
-                    tenta ler os códigos e pede confirmação antes de adicionar.
+                    Envia uma foto onde apareçam os códigos dos cromos. Revê a
+                    lista antes de confirmar.
                   </p>
 
                   <label className="image-upload-button">
@@ -711,23 +910,28 @@ function App() {
                     </div>
                   )}
 
-                  {ocrValid.length > 0 && (
+                  {ocrReview.length > 0 && (
                     <>
                       <div className="quick-results">
-                        <strong>Códigos encontrados: {ocrValid.length}</strong>
+                        <strong>Códigos para confirmar: {ocrReview.length}</strong>
                         <strong>Inválidos: {ocrInvalid.length}</strong>
                       </div>
 
-                      <div className="mini-list quick-list">
-                        {ocrValid.map((sticker) => (
-                          <span key={sticker.id}>{sticker.label}</span>
+                      <div className="review-list">
+                        {ocrReview.map((sticker) => (
+                          <span key={sticker.id}>
+                            {sticker.label}
+                            <button
+                              onClick={() => removeOcrReviewSticker(sticker.id)}
+                              title="Remover da confirmação"
+                            >
+                              ×
+                            </button>
+                          </span>
                         ))}
                       </div>
 
-                      <button
-                        className="primary-action"
-                        onClick={confirmOcrAdd}
-                      >
+                      <button className="primary-action" onClick={confirmOcrAdd}>
                         Confirmar e adicionar ao {currentUserName}
                       </button>
                     </>
@@ -747,6 +951,36 @@ function App() {
                   )}
                 </div>
               </section>
+
+              {lastAddResult && (
+                <section className="last-add-result">
+                  <h2>{lastAddResult.title}</h2>
+                  <p>
+                    Novos: {lastAddResult.newStickers.length} · Repetidos:{" "}
+                    {lastAddResult.repeatedStickers.length}
+                  </p>
+
+                  <div className="result-columns">
+                    <div>
+                      <h3>Novos</h3>
+                      <div className="mini-list">
+                        {lastAddResult.newStickers.map((sticker) => (
+                          <span key={sticker.id}>{sticker.label}</span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3>Repetidos</h3>
+                      <div className="mini-list">
+                        {lastAddResult.repeatedStickers.map((sticker) => (
+                          <span key={sticker.id}>{sticker.label}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
 
               <section className="controls">
                 <div className="control-group">
@@ -864,12 +1098,32 @@ function App() {
             className="accordion-header"
             onClick={() => toggleSection("reports")}
           >
-            <span>Relatórios</span>
+            <span>Relatórios e listas para copiar</span>
             <strong>{openSections.reports ? "−" : "+"}</strong>
           </button>
 
           {openSections.reports && (
             <div className="accordion-content">
+              <div className="copy-actions">
+                <button onClick={() => copyText("Faltas do Diego", buildMissingText("diego"))}>
+                  Copiar faltas do Diego
+                </button>
+                <button onClick={() => copyText("Repetidos do Diego", buildDuplicatesText("diego"))}>
+                  Copiar repetidos do Diego
+                </button>
+                <button onClick={() => copyText("Faltas do Arthur", buildMissingText("arthur"))}>
+                  Copiar faltas do Arthur
+                </button>
+                <button onClick={() => copyText("Repetidos do Arthur", buildDuplicatesText("arthur"))}>
+                  Copiar repetidos do Arthur
+                </button>
+                <button onClick={() => copyText("Trocas entre irmãos", buildExchangeText())}>
+                  Copiar trocas
+                </button>
+              </div>
+
+              {copyFeedback && <div className="copy-feedback">{copyFeedback}</div>}
+
               <div className="tabs">
                 <button
                   className={reportTab === "missing" ? "active" : ""}
@@ -971,6 +1225,28 @@ function App() {
 
           {openSections.progress && (
             <div className="accordion-content">
+              <section className="nearly-complete">
+                <h2>Mais perto de completar — {currentUserName}</h2>
+
+                <div className="nearly-grid">
+                  {nearlyComplete.map((item) => (
+                    <button
+                      key={item.section}
+                      onClick={() => {
+                        setSelectedSection(item.section);
+                        setOpenSections((current) => ({
+                          ...current,
+                          manage: true,
+                        }));
+                      }}
+                    >
+                      <strong>{item.section}</strong>
+                      <span>Faltam {item.missing}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
               <div className="section-progress-grid">
                 {sectionProgress.map((item) => (
                   <button
@@ -995,7 +1271,7 @@ function App() {
                       <div style={{ width: `${item.percentage}%` }} />
                     </div>
 
-                    <small>{item.percentage}% completo</small>
+                    <small>{item.percentage}% completo · faltam {item.missing}</small>
                   </button>
                 ))}
               </div>
@@ -1018,7 +1294,7 @@ function App() {
                 <div>
                   <h2>Partilhar trocas</h2>
                   <p>
-                    Gera imagens prontas para enviar no WhatsApp, Instagram ou
+                    Gera imagens verticais prontas para WhatsApp, Instagram ou
                     grupos de troca.
                   </p>
                 </div>
@@ -1056,9 +1332,29 @@ function App() {
                 <div>
                   <h2>Guardar os dados</h2>
                   <p>
-                    Exporta um ficheiro para guardar o progresso ou importa um
-                    backup antigo.
+                    Exporta um ficheiro ou importa um backup. Ao importar, podes
+                    substituir tudo ou juntar mantendo as maiores quantidades.
                   </p>
+                </div>
+
+                <div className="import-mode">
+                  <label>
+                    <input
+                      type="radio"
+                      checked={importMode === "replace"}
+                      onChange={() => setImportMode("replace")}
+                    />
+                    Substituir tudo
+                  </label>
+
+                  <label>
+                    <input
+                      type="radio"
+                      checked={importMode === "merge"}
+                      onChange={() => setImportMode("merge")}
+                    />
+                    Juntar com dados atuais
+                  </label>
                 </div>
 
                 <div className="backup-actions">
@@ -1075,11 +1371,45 @@ function App() {
                     />
                   </label>
 
+                  <button onClick={undoLastAction}>Desfazer última ação</button>
+
                   <button className="danger" onClick={resetAll}>
                     Apagar tudo
                   </button>
                 </div>
               </section>
+            </div>
+          )}
+        </div>
+
+        <div className="accordion-item card">
+          <button
+            className="accordion-header"
+            onClick={() => toggleSection("history")}
+          >
+            <span>Histórico de alterações</span>
+            <strong>{openSections.history ? "−" : "+"}</strong>
+          </button>
+
+          {openSections.history && (
+            <div className="accordion-content">
+              <div className="history-list">
+                {history.length === 0 && <p>Ainda não há histórico.</p>}
+
+                {history.map((entry) => (
+                  <div key={entry.id} className="history-item">
+                    <strong>
+                      {new Date(entry.date).toLocaleString("pt-PT", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </strong>
+                    <span>{entry.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1102,70 +1432,87 @@ function App() {
 
             {shareType === "duplicates" && (
               <>
+                <div className="share-stat-row">
+                  <span>Diego: {shareDuplicatesDiego.length} tipos</span>
+                  <span>Arthur: {shareDuplicatesArthur.length} tipos</span>
+                </div>
+
                 <h2>Diego</h2>
 
                 <div className="share-chip-list">
-                  {ALL_STICKERS.filter(
-                    (sticker) => getQuantity(state, sticker.id, "diego") > 1
-                  )
-                    .slice(0, 120)
-                    .map((sticker) => {
-                      const quantity = getQuantity(state, sticker.id, "diego");
+                  {shareDuplicatesDiego.slice(0, 90).map((sticker) => {
+                    const quantity = getQuantity(state, sticker.id, "diego");
 
-                      return (
-                        <span key={`diego-${sticker.id}`}>
-                          {sticker.label} +{quantity - 1}
-                        </span>
-                      );
-                    })}
+                    return (
+                      <span key={`diego-${sticker.id}`}>
+                        {sticker.label} +{quantity - 1}
+                      </span>
+                    );
+                  })}
                 </div>
 
                 <h2>Arthur</h2>
 
                 <div className="share-chip-list">
-                  {ALL_STICKERS.filter(
-                    (sticker) => getQuantity(state, sticker.id, "arthur") > 1
-                  )
-                    .slice(0, 120)
-                    .map((sticker) => {
-                      const quantity = getQuantity(state, sticker.id, "arthur");
+                  {shareDuplicatesArthur.slice(0, 90).map((sticker) => {
+                    const quantity = getQuantity(state, sticker.id, "arthur");
 
-                      return (
-                        <span key={`arthur-${sticker.id}`}>
-                          {sticker.label} +{quantity - 1}
-                        </span>
-                      );
-                    })}
+                    return (
+                      <span key={`arthur-${sticker.id}`}>
+                        {sticker.label} +{quantity - 1}
+                      </span>
+                    );
+                  })}
                 </div>
               </>
             )}
 
             {shareType === "missing-diego" && (
-              <div className="share-chip-list">
-                {ALL_STICKERS.filter(
-                  (sticker) => getQuantity(state, sticker.id, "diego") === 0
-                )
-                  .slice(0, 180)
-                  .map((sticker) => (
-                    <span key={`missing-diego-${sticker.id}`}>
-                      {sticker.label}
-                    </span>
+              <>
+                <div className="share-stat-row">
+                  <span>Faltam: {shareMissingDiego.length}</span>
+                  <span>Completo: {diegoSummary.percentage}%</span>
+                </div>
+
+                {Object.entries(groupBySection(shareMissingDiego))
+                  .slice(0, 16)
+                  .map(([section, stickers]) => (
+                    <div key={section} className="share-section-group">
+                      <h2>{section}</h2>
+                      <div className="share-chip-list">
+                        {stickers.slice(0, 14).map((sticker) => (
+                          <span key={`missing-diego-${sticker.id}`}>
+                            {sticker.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ))}
-              </div>
+              </>
             )}
 
             {shareType === "missing-arthur" && (
-              <div className="share-chip-list">
-                {ALL_STICKERS.filter(
-                  (sticker) => getQuantity(state, sticker.id, "arthur") === 0
-                )
-                  .slice(0, 180)
-                  .map((sticker) => (
-                    <span key={`missing-arthur-${sticker.id}`}>
-                      {sticker.label}
-                    </span>
+              <>
+                <div className="share-stat-row">
+                  <span>Faltam: {shareMissingArthur.length}</span>
+                  <span>Completo: {arthurSummary.percentage}%</span>
+                </div>
+
+                {Object.entries(groupBySection(shareMissingArthur))
+                  .slice(0, 16)
+                  .map(([section, stickers]) => (
+                    <div key={section} className="share-section-group">
+                      <h2>{section}</h2>
+                      <div className="share-chip-list">
+                        {stickers.slice(0, 14).map((sticker) => (
+                          <span key={`missing-arthur-${sticker.id}`}>
+                            {sticker.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ))}
-              </div>
+              </>
             )}
 
             <p className="share-footer">Quem tiver para trocar, fala comigo ⚽</p>
