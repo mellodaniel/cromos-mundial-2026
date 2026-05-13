@@ -17,7 +17,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(255, 212, 90, 0.2), transparent 32%),
+    radial-gradient(circle at top left, rgba(255, 212, 90, 0.22), transparent 32%),
     linear-gradient(135deg, #f4f0f8 0%, #d8cede 100%);
 }
 
@@ -46,7 +46,7 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 34px 32px;
+  padding: 30px 32px;
   border-radius: 26px;
   color: white;
   background:
@@ -102,56 +102,61 @@ button:hover {
 .card {
   border: 1px solid rgba(18, 59, 102, 0.14);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 12px 30px rgba(16, 24, 40, 0.08);
 }
 
-.dashboard {
+.compact-summary {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
-  margin-top: 20px;
+  grid-template-columns: 1.5fr repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
 }
 
-.stat {
-  padding: 22px;
+.compact-summary > div {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f8fafc;
 }
 
-.stat span {
-  display: block;
-  margin-bottom: 8px;
-  color: #667085;
-  font-weight: 800;
-}
-
-.stat strong {
-  display: block;
-  color: #123b66;
-  font-size: 40px;
-  line-height: 1;
-}
-
-.stat.highlight {
-  color: white;
+.compact-summary .summary-highlight {
   background: #164878;
 }
 
-.stat.highlight span,
-.stat.highlight strong {
+.summary-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.compact-summary strong {
+  display: block;
+  color: #123b66;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.summary-highlight .summary-label,
+.summary-highlight strong {
   color: white;
 }
 
 .progress-card {
-  margin-top: 18px;
-  padding: 22px;
+  margin-top: 14px;
+  padding: 18px;
 }
 
 .progress-header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
-  font-size: 18px;
+  margin-bottom: 12px;
+  font-size: 17px;
 }
 
 .progress-header span {
@@ -160,7 +165,7 @@ button:hover {
 }
 
 .progress-bar {
-  height: 22px;
+  height: 18px;
   overflow: hidden;
   border-radius: 999px;
   background: #e4e9f2;
@@ -172,13 +177,122 @@ button:hover {
   background: linear-gradient(90deg, #ffd45a, #164878);
 }
 
+.compare-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 16px;
+}
+
+.compare-item {
+  padding: 16px;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.compare-item strong {
+  display: block;
+  color: #123b66;
+  font-size: 21px;
+}
+
+.compare-item span {
+  display: block;
+  margin-top: 4px;
+  color: #101828;
+  font-weight: 900;
+}
+
+.compare-item small {
+  display: block;
+  margin-top: 8px;
+  color: #667085;
+  font-weight: 800;
+}
+
+.mini-progress {
+  height: 9px;
+  overflow: hidden;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: #e4e9f2;
+}
+
+.mini-progress div {
+  height: 100%;
+  border-radius: 999px;
+  background: #164878;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.quick-actions button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 16px;
+  padding: 12px 14px;
+  color: #101828;
+  background: #ffd45a;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.accordion {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.accordion-item {
+  overflow: hidden;
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  padding: 20px 22px;
+  color: #123b66;
+  background: white;
+  cursor: pointer;
+}
+
+.accordion-header span {
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.accordion-header strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  color: #101828;
+  background: #ffd45a;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.accordion-content {
+  padding: 0 22px 22px;
+}
+
 .controls {
   display: grid;
   grid-template-columns: 230px 1fr auto;
   gap: 16px;
   align-items: end;
-  margin-top: 20px;
-  padding: 22px;
+  padding-top: 4px;
 }
 
 .control-group {
@@ -215,116 +329,30 @@ button:hover {
   flex-wrap: wrap;
 }
 
-.filter-buttons button {
+.filter-buttons button,
+.tabs button {
   border: 0;
   border-radius: 14px;
   padding: 13px 16px;
   color: #101828;
-  background: transparent;
+  background: #eef4fb;
   font-weight: 900;
   cursor: pointer;
 }
 
-.filter-buttons button.active {
+.filter-buttons button.active,
+.tabs button.active {
   background: #ffd45a;
-}
-
-.share-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: center;
-  margin-top: 20px;
-  padding: 22px;
-}
-
-.share-actions h2,
-.section-progress h2 {
-  margin: 0 0 6px;
-  color: #123b66;
-}
-
-.share-actions p,
-.section-progress p {
-  margin: 0;
-  color: #667085;
-}
-
-.share-buttons {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.share-buttons button {
-  border: 0;
-  border-radius: 14px;
-  padding: 12px 16px;
-  font-weight: 900;
-  cursor: pointer;
-  background: #ffd45a;
-  color: #101828;
-}
-
-.section-progress {
-  margin-top: 20px;
-  padding: 22px;
-}
-
-.section-progress-header {
-  margin-bottom: 18px;
-}
-
-.section-progress-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-}
-
-.section-progress-item {
-  padding: 14px;
-  border: 1px solid #d9e2ef;
-  border-radius: 16px;
-  background: #f8fafc;
-}
-
-.section-progress-title {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-  color: #123b66;
-}
-
-.section-progress-title span {
-  color: #667085;
-  font-weight: 900;
-}
-
-.small-progress-bar {
-  height: 9px;
-  overflow: hidden;
-  margin-bottom: 8px;
-  border-radius: 999px;
-  background: #e4e9f2;
-}
-
-.small-progress-bar div {
-  height: 100%;
-  border-radius: 999px;
-  background: #123b66;
-}
-
-.section-progress-item small {
-  color: #667085;
-  font-weight: 800;
 }
 
 .stickers-list {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
-  margin-top: 28px;
+  gap: 12px;
+  margin-top: 18px;
+  max-height: 680px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .sticker-card {
@@ -332,7 +360,10 @@ button:hover {
   justify-content: space-between;
   gap: 18px;
   align-items: center;
-  padding: 18px 20px;
+  padding: 16px 18px;
+  border: 1px solid rgba(18, 59, 102, 0.12);
+  border-radius: 18px;
+  background: #ffffff;
 }
 
 .sticker-label {
@@ -424,34 +455,31 @@ button:hover {
   font-size: 20px;
 }
 
-.reports {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-top: 24px;
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
 }
 
-.report {
-  padding: 22px;
-}
-
-.report h2 {
+.report-panel h2 {
   margin: 0 0 6px;
   color: #123b66;
 }
 
-.report h3 {
-  margin: 18px 0 8px;
-  font-size: 16px;
+.report-panel h3 {
+  margin: 22px 0 10px;
+  color: #123b66;
+  font-size: 17px;
 }
 
-.report p {
+.report-panel p {
   margin: 0 0 14px;
   color: #667085;
   font-weight: 800;
 }
 
-.report small {
+.report-panel small {
   display: block;
   margin-top: 10px;
   color: #667085;
@@ -461,6 +489,9 @@ button:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .mini-list span {
@@ -476,13 +507,94 @@ button:hover {
   font-weight: 900;
 }
 
+.section-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  max-height: 640px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.section-progress-item {
+  padding: 14px;
+  border: 1px solid #d9e2ef;
+  border-radius: 16px;
+  background: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.section-progress-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #123b66;
+}
+
+.section-progress-title span {
+  color: #667085;
+  font-weight: 900;
+}
+
+.small-progress-bar {
+  height: 9px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: #e4e9f2;
+}
+
+.small-progress-bar div {
+  height: 100%;
+  border-radius: 999px;
+  background: #123b66;
+}
+
+.section-progress-item small {
+  color: #667085;
+  font-weight: 800;
+}
+
+.share-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+}
+
+.share-actions h2 {
+  margin: 0 0 6px;
+  color: #123b66;
+}
+
+.share-actions p {
+  margin: 0;
+  color: #667085;
+}
+
+.share-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.share-buttons button {
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-weight: 900;
+  cursor: pointer;
+  background: #ffd45a;
+  color: #101828;
+}
+
 .backup {
   display: flex;
   justify-content: space-between;
   gap: 20px;
   align-items: center;
-  margin-top: 24px;
-  padding: 22px;
 }
 
 .backup h2 {
@@ -590,7 +702,20 @@ button:hover {
 }
 
 @media (max-width: 1000px) {
-  .dashboard {
+  .compact-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .compact-summary > div:first-child,
+  .compact-summary .summary-highlight {
+    grid-column: span 2;
+  }
+
+  .compare-card {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-actions {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -599,10 +724,6 @@ button:hover {
   }
 
   .stickers-list {
-    grid-template-columns: 1fr;
-  }
-
-  .reports {
     grid-template-columns: 1fr;
   }
 
@@ -626,7 +747,7 @@ button:hover {
   .hero {
     flex-direction: column;
     align-items: stretch;
-    padding: 28px 24px;
+    padding: 26px 22px;
     border-radius: 24px;
   }
 
@@ -646,24 +767,33 @@ button:hover {
     flex: 1;
   }
 
-  .dashboard {
+  .compact-summary {
     grid-template-columns: repeat(2, 1fr);
+    padding: 12px;
   }
 
-  .stat {
-    padding: 20px;
-  }
-
-  .stat strong {
-    font-size: 38px;
-  }
-
-  .stat.highlight {
-    grid-column: span 2;
+  .compact-summary strong {
+    font-size: 24px;
   }
 
   .progress-header {
-    font-size: 16px;
+    font-size: 15px;
+  }
+
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .accordion-header {
+    padding: 18px;
+  }
+
+  .accordion-header span {
+    font-size: 18px;
+  }
+
+  .accordion-content {
+    padding: 0 16px 18px;
   }
 
   .section-progress-grid {
@@ -675,7 +805,7 @@ button:hover {
   }
 
   .quantity-box {
-    min-width: 110px;
+    min-width: 108px;
   }
 
   .share-buttons,
