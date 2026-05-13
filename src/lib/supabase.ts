@@ -11,14 +11,10 @@ export type CloudStickerRow = {
   updated_at?: string;
 };
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = "https://oqvbwsdfriyauazegsbn.supabase.co";
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    "Supabase não está configurado. Verifica o ficheiro .env com VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY."
-  );
-}
+const supabaseAnonKey =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xdmJ3c2Rmcml5YXVhemVnc2JuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NzY2MjksImV4cCI6MjA5NDI1MjYyOX0.j_SAZXrdFblIQOr4ma2Cgc-7ueTLGEB37NkE8pBpF_o";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -31,6 +27,7 @@ export async function fetchCloudCollection() {
     .eq("family_id", FAMILY_ID);
 
   if (error) {
+    console.error("Erro fetchCloudCollection:", error);
     throw error;
   }
 
@@ -50,6 +47,7 @@ export async function incrementStickerQuantity(
   });
 
   if (error) {
+    console.error("Erro incrementStickerQuantity:", error);
     throw error;
   }
 }
@@ -73,6 +71,7 @@ export async function upsertStickerQuantity(
   );
 
   if (error) {
+    console.error("Erro upsertStickerQuantity:", error);
     throw error;
   }
 }
@@ -114,6 +113,7 @@ export async function importLocalCollectionToCloud(
   });
 
   if (error) {
+    console.error("Erro importLocalCollectionToCloud:", error);
     throw error;
   }
 
