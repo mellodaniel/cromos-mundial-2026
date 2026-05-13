@@ -1,8 +1,16 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import html2canvas from "html2canvas";
 import "./index.css";
-import { ALL_STICKERS, USERS, type AlbumOwner, type Sticker } from "./data/stickers";
+import {
+  ALL_STICKERS,
+  USERS,
+  type AlbumOwner,
+  type Sticker,
+} from "./data/stickers";
 
 type FilterType = "all" | "owned" | "missing" | "duplicates";
+
+type ShareType = "duplicates" | "missing-diego" | "missing-arthur" | null;
 
 type CollectionState = Record<string, { diego: number; arthur: number }>;
 
@@ -11,6 +19,7 @@ const STORAGE_KEY = "cromos-mundial-2026-state-v1";
 function loadInitialState(): CollectionState {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
+
     if (saved) {
       return JSON.parse(saved);
     }
@@ -25,7 +34,11 @@ function saveState(state: CollectionState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function getQuantity(state: CollectionState, stickerId: string, owner: AlbumOwner) {
+function getQuantity(
+  state: CollectionState,
+  stickerId: string,
+  owner: AlbumOwner
+) {
   return state[stickerId]?.[owner] ?? 0;
 }
 
@@ -41,12 +54,19 @@ function App() {
   const [selectedSection, setSelectedSection] = useState<string>("Todas");
   const [filter, setFilter] = useState<FilterType>("all");
   const [search, setSearch] = useState("");
+  const [shareType, setShareType] = useState<ShareType>(null);
+
+  const shareCardRef = useRef<HTMLDivElement | null>(null);
 
   const sections = useMemo(() => {
     return ["Todas", ...Array.from(new Set(ALL_STICKERS.map((s) => s.section)))];
   }, []);
 
-  const updateQuantity = (stickerId: string, ownerId: AlbumOwner, change: number) => {
+  const updateQuantity = (
+    stickerId: string,
+    ownerId: AlbumOwner,
+    change: number
+  ) => {
     setState((current) => {
       const currentQty = getQuantity(current, stickerId, ownerId);
       const nextQty = Math.max(0, currentQty + change);
@@ -66,7 +86,10 @@ function App() {
   };
 
   const resetAll = () => {
-    const confirmReset = window.confirm("Tens a certeza que queres apagar todos os dados?");
+    const confirmReset = window.confirm(
+      "Tens a certeza que queres apagar todos os dados?"
+    );
+
     if (!confirmReset) return;
 
     localStorage.removeItem(STORAGE_KEY);
@@ -87,6 +110,7 @@ function App() {
 
     const url = URL.createObjectURL(file);
     const link = document.createElement("a");
+
     link.href = url;
     link.download = "backup-cromos-mundial-2026.json";
     link.click();
@@ -106,6 +130,7 @@ function App() {
 
         saveState(importedState);
         setState(importedState);
+
         alert("Backup importado com sucesso.");
       } catch {
         alert("Erro ao importar backup. Verifica se o ficheiro é válido.");
@@ -164,11 +189,15 @@ function App() {
   }, [state, owner]);
 
   const missingList = useMemo(() => {
-    return ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, owner) === 0);
+    return ALL_STICKERS.filter(
+      (sticker) => getQuantity(state, sticker.id, owner) === 0
+    );
   }, [state, owner]);
 
   const duplicateList = useMemo(() => {
-    return ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, owner) > 1);
+    return ALL_STICKERS.filter(
+      (sticker) => getQuantity(state, sticker.id, owner) > 1
+    );
   }, [state, owner]);
 
   const exchangeSuggestions = useMemo(() => {
@@ -194,7 +223,62 @@ function App() {
     };
   }, [state]);
 
-  const currentUserName = USERS.find((u) => u.id === owner)?.name ?? "Diego";
+  const sectionProgress = useMemo(() => {
+    return sections
+      .filter((section) => section !== "Todas")
+      .map((section) => {
+        const stickers = ALL_STICKERS.filter(
+          (sticker) => sticker.section === section
+        );
+
+        const owned = stickers.filter(
+          (sticker) => getQuantity(state, sticker.id, owner) > 0
+        ).length;
+
+        const total = stickers.length;
+        const percentage = total > 0 ? Math.round((owned / total) * 100) : 0;
+
+        return {
+          section,
+          owned,
+          total,
+          percentage,
+        };
+      });
+  }, [sections, state, owner]);
+
+  const downloadShareImage = async (
+    type: "duplicates" | "missing-diego" | "missing-arthur"
+  ) => {
+    setShareType(type);
+
+    setTimeout(async () => {
+      if (!shareCardRef.current) return;
+
+      const canvas = await html2canvas(shareCardRef.current, {
+        backgroundColor: "#f4f0f8",
+        scale: 2,
+      });
+
+      const link = document.createElement("a");
+
+      const fileName =
+        type === "duplicates"
+          ? "cromos-repetidos-mundial-2026.png"
+          : type === "missing-diego"
+          ? "faltam-diego-mundial-2026.png"
+          : "faltam-arthur-mundial-2026.png";
+
+      link.download = fileName;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      setShareType(null);
+    }, 150);
+  };
+
+  const currentUserName =
+    USERS.find((user) => user.id === owner)?.name ?? "Diego";
 
   return (
     <main className="app">
@@ -225,18 +309,22 @@ function App() {
           <span>Total</span>
           <strong>{summary.total}</strong>
         </div>
+
         <div className="card stat">
           <span>Já tem</span>
           <strong>{summary.owned}</strong>
         </div>
+
         <div className="card stat">
           <span>Faltam</span>
           <strong>{summary.missing}</strong>
         </div>
+
         <div className="card stat">
           <span>Repetidos</span>
           <strong>{summary.duplicates}</strong>
         </div>
+
         <div className="card stat highlight">
           <span>Completo</span>
           <strong>{summary.percentage}%</strong>
@@ -250,6 +338,7 @@ function App() {
             {summary.owned} de {summary.total}
           </span>
         </div>
+
         <div className="progress-bar">
           <div style={{ width: `${summary.percentage}%` }} />
         </div>
@@ -258,6 +347,7 @@ function App() {
       <section className="controls card">
         <div className="control-group">
           <label>Secção / País</label>
+
           <select
             value={selectedSection}
             onChange={(event) => setSelectedSection(event.target.value)}
@@ -272,6 +362,7 @@ function App() {
 
         <div className="control-group">
           <label>Pesquisar</label>
+
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -286,24 +377,77 @@ function App() {
           >
             Todos
           </button>
+
           <button
             className={filter === "owned" ? "active" : ""}
             onClick={() => setFilter("owned")}
           >
             Tenho
           </button>
+
           <button
             className={filter === "missing" ? "active" : ""}
             onClick={() => setFilter("missing")}
           >
             Faltam
           </button>
+
           <button
             className={filter === "duplicates" ? "active" : ""}
             onClick={() => setFilter("duplicates")}
           >
             Repetidos
           </button>
+        </div>
+      </section>
+
+      <section className="share-actions card">
+        <div>
+          <h2>Imagens para partilhar</h2>
+          <p>
+            Gera imagens prontas para enviar no WhatsApp, Instagram ou grupos de
+            troca.
+          </p>
+        </div>
+
+        <div className="share-buttons">
+          <button onClick={() => downloadShareImage("duplicates")}>
+            Gerar imagem de repetidos
+          </button>
+
+          <button onClick={() => downloadShareImage("missing-diego")}>
+            Faltam ao Diego
+          </button>
+
+          <button onClick={() => downloadShareImage("missing-arthur")}>
+            Faltam ao Arthur
+          </button>
+        </div>
+      </section>
+
+      <section className="section-progress card">
+        <div className="section-progress-header">
+          <h2>Progresso por país / secção — {currentUserName}</h2>
+          <p>Vê rapidamente quais as secções mais completas.</p>
+        </div>
+
+        <div className="section-progress-grid">
+          {sectionProgress.map((item) => (
+            <div key={item.section} className="section-progress-item">
+              <div className="section-progress-title">
+                <strong>{item.section}</strong>
+                <span>
+                  {item.owned}/{item.total}
+                </span>
+              </div>
+
+              <div className="small-progress-bar">
+                <div style={{ width: `${item.percentage}%` }} />
+              </div>
+
+              <small>{item.percentage}% completo</small>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -336,7 +480,9 @@ function App() {
                   <button onClick={() => updateQuantity(sticker.id, owner, -1)}>
                     -
                   </button>
+
                   <strong>{quantity}</strong>
+
                   <button onClick={() => updateQuantity(sticker.id, owner, 1)}>
                     +
                   </button>
@@ -351,20 +497,24 @@ function App() {
         <div className="card report">
           <h2>Faltam — {currentUserName}</h2>
           <p>{missingList.length} cromos em falta</p>
+
           <div className="mini-list">
             {missingList.slice(0, 80).map((sticker) => (
               <span key={sticker.id}>{sticker.label}</span>
             ))}
           </div>
+
           {missingList.length > 80 && <small>Mostrando os primeiros 80.</small>}
         </div>
 
         <div className="card report">
           <h2>Repetidos — {currentUserName}</h2>
           <p>{duplicateList.length} tipos de cromos repetidos</p>
+
           <div className="mini-list">
             {duplicateList.slice(0, 80).map((sticker) => {
               const quantity = getQuantity(state, sticker.id, owner);
+
               return (
                 <span key={sticker.id}>
                   {sticker.label} +{quantity - 1}
@@ -372,6 +522,7 @@ function App() {
               );
             })}
           </div>
+
           {duplicateList.length === 0 && <small>Ainda não há repetidos.</small>}
         </div>
 
@@ -379,6 +530,7 @@ function App() {
           <h2>Trocas entre irmãos</h2>
 
           <h3>Diego pode dar ao Arthur</h3>
+
           <div className="mini-list">
             {exchangeSuggestions.diegoCanGiveToArthur
               .slice(0, 50)
@@ -386,11 +538,13 @@ function App() {
                 <span key={sticker.id}>{sticker.label}</span>
               ))}
           </div>
+
           {exchangeSuggestions.diegoCanGiveToArthur.length === 0 && (
             <small>Nenhuma sugestão por enquanto.</small>
           )}
 
           <h3>Arthur pode dar ao Diego</h3>
+
           <div className="mini-list">
             {exchangeSuggestions.arthurCanGiveToDiego
               .slice(0, 50)
@@ -398,6 +552,7 @@ function App() {
                 <span key={sticker.id}>{sticker.label}</span>
               ))}
           </div>
+
           {exchangeSuggestions.arthurCanGiveToDiego.length === 0 && (
             <small>Nenhuma sugestão por enquanto.</small>
           )}
@@ -421,7 +576,9 @@ function App() {
             <input
               type="file"
               accept="application/json"
-              onChange={(event) => importBackup(event.target.files?.[0] ?? null)}
+              onChange={(event) =>
+                importBackup(event.target.files?.[0] ?? null)
+              }
             />
           </label>
 
@@ -430,6 +587,94 @@ function App() {
           </button>
         </div>
       </section>
+
+      {shareType && (
+        <div className="share-preview-wrapper">
+          <div ref={shareCardRef} className="share-preview-card">
+            <p className="share-eyebrow">Caderneta Panini</p>
+
+            <h1>
+              {shareType === "duplicates"
+                ? "Cromos repetidos para troca"
+                : shareType === "missing-diego"
+                ? "Cromos que faltam ao Diego"
+                : "Cromos que faltam ao Arthur"}
+            </h1>
+
+            <p className="share-subtitle">Mundial 2026</p>
+
+            {shareType === "duplicates" && (
+              <>
+                <h2>Diego</h2>
+
+                <div className="share-chip-list">
+                  {ALL_STICKERS.filter(
+                    (sticker) => getQuantity(state, sticker.id, "diego") > 1
+                  )
+                    .slice(0, 120)
+                    .map((sticker) => {
+                      const quantity = getQuantity(state, sticker.id, "diego");
+
+                      return (
+                        <span key={`diego-${sticker.id}`}>
+                          {sticker.label} +{quantity - 1}
+                        </span>
+                      );
+                    })}
+                </div>
+
+                <h2>Arthur</h2>
+
+                <div className="share-chip-list">
+                  {ALL_STICKERS.filter(
+                    (sticker) => getQuantity(state, sticker.id, "arthur") > 1
+                  )
+                    .slice(0, 120)
+                    .map((sticker) => {
+                      const quantity = getQuantity(state, sticker.id, "arthur");
+
+                      return (
+                        <span key={`arthur-${sticker.id}`}>
+                          {sticker.label} +{quantity - 1}
+                        </span>
+                      );
+                    })}
+                </div>
+              </>
+            )}
+
+            {shareType === "missing-diego" && (
+              <div className="share-chip-list">
+                {ALL_STICKERS.filter(
+                  (sticker) => getQuantity(state, sticker.id, "diego") === 0
+                )
+                  .slice(0, 180)
+                  .map((sticker) => (
+                    <span key={`missing-diego-${sticker.id}`}>
+                      {sticker.label}
+                    </span>
+                  ))}
+              </div>
+            )}
+
+            {shareType === "missing-arthur" && (
+              <div className="share-chip-list">
+                {ALL_STICKERS.filter(
+                  (sticker) => getQuantity(state, sticker.id, "arthur") === 0
+                )
+                  .slice(0, 180)
+                  .map((sticker) => (
+                    <span key={`missing-arthur-${sticker.id}`}>
+                      {sticker.label}
+                    </span>
+                  ))}
+              </div>
+            )}
+
+            <p className="share-footer">Quem tiver para trocar, fala comigo ⚽</p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
