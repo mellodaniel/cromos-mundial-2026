@@ -18,6 +18,7 @@ import {
 
 type FilterType = "all" | "owned" | "missing" | "duplicates";
 type PanelKey = "add" | "reports" | "progress" | "share" | "trades" | "backup";
+type PublicPanelKey = "repeated" | "missing" | "proposal";
 
 type CollectionState = Record<string, { diego: number; arthur: number }>;
 
@@ -72,21 +73,6 @@ function rowsToCollectionState(
   return nextState;
 }
 
-function mergeStates(localState: CollectionState, cloudState: CollectionState): CollectionState {
-  const merged: CollectionState = { ...cloudState };
-
-  Object.entries(localState).forEach(([stickerId, quantities]) => {
-    const cloudQuantities = merged[stickerId] ?? { diego: 0, arthur: 0 };
-
-    merged[stickerId] = {
-      diego: Math.max(cloudQuantities.diego ?? 0, quantities.diego ?? 0),
-      arthur: Math.max(cloudQuantities.arthur ?? 0, quantities.arthur ?? 0),
-    };
-  });
-
-  return merged;
-}
-
 function calculateSummary(state: CollectionState, owner: AlbumOwner) {
   const total = ALL_STICKERS.length;
   let owned = 0;
@@ -114,6 +100,8 @@ function PublicTradesPage() {
   const [state, setState] = useState<CollectionState>(() => loadInitialState());
   const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([]);
   const [cloudStatus, setCloudStatus] = useState("A carregar dados...");
+  const [openPublicPanel, setOpenPublicPanel] = useState<PublicPanelKey | null>("repeated");
+
   const [wantedOwner, setWantedOwner] = useState<AlbumOwner>("diego");
   const [wantedStickerId, setWantedStickerId] = useState("");
   const [offeredOwner, setOfferedOwner] = useState<AlbumOwner>("diego");
@@ -136,7 +124,6 @@ function PublicTradesPage() {
       setState(cloudState);
       saveState(cloudState);
       setTradeRequests(trades);
-
       setCloudStatus("Dados atualizados");
     } catch (error) {
       console.error(error);
@@ -191,6 +178,13 @@ function PublicTradesPage() {
     );
   }, [state, tradeRequests]);
 
+  const repeatedByOwner = useMemo(() => {
+    return {
+      diego: repeatedAvailable.filter((item) => item.owner === "diego"),
+      arthur: repeatedAvailable.filter((item) => item.owner === "arthur"),
+    };
+  }, [repeatedAvailable]);
+
   const missingByOwner = useMemo(() => {
     return {
       diego: ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, "diego") === 0),
@@ -202,9 +196,12 @@ function PublicTradesPage() {
     (item) => item.owner === wantedOwner && item.sticker.id === wantedStickerId
   );
 
+  const totalAvailable = repeatedAvailable.reduce((total, item) => total + item.availableQty, 0);
+
   const handleSelectWanted = (owner: AlbumOwner, stickerId: string) => {
     setWantedOwner(owner);
     setWantedStickerId(stickerId);
+    setOpenPublicPanel("proposal");
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   };
 
@@ -245,6 +242,7 @@ function PublicTradesPage() {
       setPersonName("");
       setPersonContact("");
       setMessage("");
+      setOpenPublicPanel("repeated");
 
       await loadPublicData();
     } catch (error) {
@@ -255,27 +253,33 @@ function PublicTradesPage() {
     }
   };
 
+  const renderPublicPanelHeader = (panel: PublicPanelKey, title: string) => (
+    <button
+      className="accordion-header"
+      onClick={() => setOpenPublicPanel((current) => (current === panel ? null : panel))}
+    >
+      <span>{title}</span>
+      <strong>{openPublicPanel === panel ? "−" : "+"}</strong>
+    </button>
+  );
+
   return (
     <main className="app public-app">
-      <header className="hero">
+      <header className="hero public-hero">
         <div>
           <p className="eyebrow">Trocas Panini</p>
           <h1>Trocas Mundial 2026</h1>
           <p className="subtitle">
-            Vê os cromos repetidos disponíveis e propõe uma troca.
+            Vê os cromos repetidos disponíveis, consulta o que ainda falta e propõe uma troca.
           </p>
           <p className="cloud-status">☁️ {cloudStatus}</p>
         </div>
-
-        <a className="private-link" href="/">
-          Ver cadernetas
-        </a>
       </header>
 
       <section className="trade-public-summary card">
         <div>
           <span>Repetidos disponíveis</span>
-          <strong>{repeatedAvailable.reduce((total, item) => total + item.availableQty, 0)}</strong>
+          <strong>{totalAvailable}</strong>
         </div>
         <div>
           <span>Faltam ao Diego</span>
@@ -287,157 +291,222 @@ function PublicTradesPage() {
         </div>
       </section>
 
-      <section className="trade-layout">
-        <div className="card trade-list-card">
-          <h2>Repetidos disponíveis para troca</h2>
-          <p>Escolhe o cromo que queres reservar.</p>
+      <section className="accordion card">
+        {renderPublicPanelHeader("repeated", "Repetidos disponíveis")}
 
-          <div className="trade-sticker-grid">
-            {repeatedAvailable.map((item) => (
-              <button
-                key={`${item.owner}-${item.sticker.id}`}
-                className={`trade-sticker ${
-                  wantedOwner === item.owner && wantedStickerId === item.sticker.id ? "selected" : ""
-                }`}
-                onClick={() => handleSelectWanted(item.owner, item.sticker.id)}
-              >
-                <span>{item.sticker.label}</span>
-                <strong>{item.sticker.name}</strong>
-                <small>
-                  {getOwnerName(item.owner)} · {item.availableQty} disponível
-                </small>
-              </button>
-            ))}
-          </div>
+        {openPublicPanel === "repeated" && (
+          <div className="accordion-content">
+            <div className="public-two-columns">
+              <div className="public-owner-block">
+                <h2>Diego</h2>
+                <p>
+                  {repeatedByOwner.diego.reduce((total, item) => total + item.availableQty, 0)}{" "}
+                  cromos disponíveis
+                </p>
 
-          {repeatedAvailable.length === 0 && (
-            <p className="empty-message">Não há repetidos disponíveis neste momento.</p>
-          )}
-        </div>
-
-        <form className="card trade-form" onSubmit={handleSubmitTrade}>
-          <h2>Propor troca</h2>
-
-          <div className="selected-trade-box">
-            <span>Cromo escolhido</span>
-            <strong>
-              {selectedWanted
-                ? `${getOwnerName(selectedWanted.owner)} — ${selectedWanted.sticker.label} ${selectedWanted.sticker.name}`
-                : "Ainda não escolheste nenhum cromo"}
-            </strong>
-          </div>
-
-          <div className="form-grid">
-            <label>
-              Para qual caderneta?
-              <select
-                value={wantedOwner}
-                onChange={(event) => setWantedOwner(event.target.value as AlbumOwner)}
-              >
-                {USERS.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Cromo que queres reservar
-              <select
-                value={wantedStickerId}
-                onChange={(event) => setWantedStickerId(event.target.value)}
-              >
-                <option value="">Selecionar cromo</option>
-                {repeatedAvailable
-                  .filter((item) => item.owner === wantedOwner)
-                  .map((item) => (
-                    <option key={item.sticker.id} value={item.sticker.id}>
-                      {item.sticker.label} — {item.sticker.name}
-                    </option>
+                <div className="trade-sticker-grid compact">
+                  {repeatedByOwner.diego.map((item) => (
+                    <button
+                      key={`${item.owner}-${item.sticker.id}`}
+                      className={`trade-sticker ${
+                        wantedOwner === item.owner && wantedStickerId === item.sticker.id
+                          ? "selected"
+                          : ""
+                      }`}
+                      onClick={() => handleSelectWanted(item.owner, item.sticker.id)}
+                    >
+                      <span>{item.sticker.label}</span>
+                      <strong>{item.sticker.name}</strong>
+                      <small>{item.availableQty} disponível</small>
+                    </button>
                   ))}
-              </select>
-            </label>
+                </div>
 
-            <label>
-              Para quem é o cromo que vais entregar?
-              <select
-                value={offeredOwner}
-                onChange={(event) => setOfferedOwner(event.target.value as AlbumOwner)}
-              >
-                {USERS.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                {repeatedByOwner.diego.length === 0 && (
+                  <p className="empty-message">Sem repetidos disponíveis para o Diego.</p>
+                )}
+              </div>
 
-            <label>
-              Cromo que vais entregar
-              <input
-                value={offeredStickerCode}
-                onChange={(event) => setOfferedStickerCode(event.target.value)}
-                placeholder="Ex: POR 3, ARG 10, FWC 0, CC 5"
-              />
-            </label>
+              <div className="public-owner-block">
+                <h2>Arthur</h2>
+                <p>
+                  {repeatedByOwner.arthur.reduce((total, item) => total + item.availableQty, 0)}{" "}
+                  cromos disponíveis
+                </p>
 
-            <label>
-              O teu nome
-              <input
-                value={personName}
-                onChange={(event) => setPersonName(event.target.value)}
-                placeholder="Ex: João"
-              />
-            </label>
+                <div className="trade-sticker-grid compact">
+                  {repeatedByOwner.arthur.map((item) => (
+                    <button
+                      key={`${item.owner}-${item.sticker.id}`}
+                      className={`trade-sticker ${
+                        wantedOwner === item.owner && wantedStickerId === item.sticker.id
+                          ? "selected"
+                          : ""
+                      }`}
+                      onClick={() => handleSelectWanted(item.owner, item.sticker.id)}
+                    >
+                      <span>{item.sticker.label}</span>
+                      <strong>{item.sticker.name}</strong>
+                      <small>{item.availableQty} disponível</small>
+                    </button>
+                  ))}
+                </div>
 
-            <label>
-              Contacto / WhatsApp
-              <input
-                value={personContact}
-                onChange={(event) => setPersonContact(event.target.value)}
-                placeholder="Ex: 91xxxxxxx"
-              />
-            </label>
-
-            <label className="full">
-              Mensagem opcional
-              <textarea
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                placeholder="Ex: Posso entregar no treino, na escola, etc."
-              />
-            </label>
+                {repeatedByOwner.arthur.length === 0 && (
+                  <p className="empty-message">Sem repetidos disponíveis para o Arthur.</p>
+                )}
+              </div>
+            </div>
           </div>
-
-          <button className="submit-trade" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "A enviar..." : "Enviar proposta de troca"}
-          </button>
-        </form>
+        )}
       </section>
 
-      <section className="card public-missing-card">
-        <h2>Cromos que ainda faltam</h2>
+      <section className="accordion card">
+        {renderPublicPanelHeader("missing", "Cromos em falta")}
 
-        <div className="missing-public-grid">
-          <div>
-            <h3>Diego</h3>
-            <div className="mini-list">
-              {missingByOwner.diego.slice(0, 160).map((sticker) => (
-                <span key={sticker.id}>{sticker.label}</span>
-              ))}
+        {openPublicPanel === "missing" && (
+          <div className="accordion-content">
+            <div className="public-two-columns">
+              <div className="public-owner-block">
+                <h2>Faltam ao Diego</h2>
+                <p>{missingByOwner.diego.length} cromos em falta</p>
+
+                <div className="mini-list">
+                  {missingByOwner.diego.map((sticker) => (
+                    <span key={sticker.id}>{sticker.label}</span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="public-owner-block">
+                <h2>Faltam ao Arthur</h2>
+                <p>{missingByOwner.arthur.length} cromos em falta</p>
+
+                <div className="mini-list">
+                  {missingByOwner.arthur.map((sticker) => (
+                    <span key={sticker.id}>{sticker.label}</span>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
+        )}
+      </section>
 
-          <div>
-            <h3>Arthur</h3>
-            <div className="mini-list">
-              {missingByOwner.arthur.slice(0, 160).map((sticker) => (
-                <span key={sticker.id}>{sticker.label}</span>
-              ))}
-            </div>
+      <section className="accordion card">
+        {renderPublicPanelHeader("proposal", "Propor uma troca")}
+
+        {openPublicPanel === "proposal" && (
+          <div className="accordion-content">
+            <form className="trade-form public-form" onSubmit={handleSubmitTrade}>
+              <h2>Propor troca</h2>
+
+              <p className="trade-form-help">
+                A tua proposta será enviada para nós e ficará pendente até ser confirmada.
+                Depois entraremos em contacto contigo pelo contacto indicado.
+              </p>
+
+              <div className="selected-trade-box">
+                <span>Cromo escolhido</span>
+                <strong>
+                  {selectedWanted
+                    ? `${getOwnerName(selectedWanted.owner)} — ${selectedWanted.sticker.label} ${selectedWanted.sticker.name}`
+                    : "Ainda não escolheste nenhum cromo"}
+                </strong>
+              </div>
+
+              <div className="form-grid">
+                <label>
+                  Para qual caderneta?
+                  <select
+                    value={wantedOwner}
+                    onChange={(event) => {
+                      setWantedOwner(event.target.value as AlbumOwner);
+                      setWantedStickerId("");
+                    }}
+                  >
+                    {USERS.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Cromo que queres reservar
+                  <select
+                    value={wantedStickerId}
+                    onChange={(event) => setWantedStickerId(event.target.value)}
+                  >
+                    <option value="">Selecionar cromo</option>
+                    {repeatedAvailable
+                      .filter((item) => item.owner === wantedOwner)
+                      .map((item) => (
+                        <option key={item.sticker.id} value={item.sticker.id}>
+                          {item.sticker.label} — {item.sticker.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+
+                <label>
+                  Para quem é o cromo que vais entregar?
+                  <select
+                    value={offeredOwner}
+                    onChange={(event) => setOfferedOwner(event.target.value as AlbumOwner)}
+                  >
+                    {USERS.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Cromo que vais entregar
+                  <input
+                    value={offeredStickerCode}
+                    onChange={(event) => setOfferedStickerCode(event.target.value)}
+                    placeholder="Ex: POR 3, ARG 10, FWC 0, CC 5"
+                  />
+                </label>
+
+                <label>
+                  O teu nome
+                  <input
+                    value={personName}
+                    onChange={(event) => setPersonName(event.target.value)}
+                    placeholder="Ex: João"
+                  />
+                </label>
+
+                <label>
+                  Contacto / WhatsApp
+                  <input
+                    value={personContact}
+                    onChange={(event) => setPersonContact(event.target.value)}
+                    placeholder="Ex: 91xxxxxxx"
+                  />
+                </label>
+
+                <label className="full">
+                  Mensagem opcional
+                  <textarea
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    placeholder="Ex: Posso entregar no treino, na escola, etc."
+                  />
+                </label>
+              </div>
+
+              <button className="submit-trade" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "A enviar..." : "Enviar proposta de troca"}
+              </button>
+            </form>
           </div>
-        </div>
+        )}
       </section>
     </main>
   );
@@ -484,11 +553,9 @@ function PrivateApp() {
         ]);
 
         const cloudState = rowsToCollectionState(rows);
-        const localState = loadInitialState();
-        const mergedState = mergeStates(localState, cloudState);
 
-        setState(mergedState);
-        saveState(mergedState);
+        setState(cloudState);
+        saveState(cloudState);
         setTradeRequests(requests);
         setCloudStatus("Sincronizado com Supabase");
       } catch (error) {
@@ -960,7 +1027,9 @@ function PrivateApp() {
         >
           Ver repetidos
         </button>
-        <a href="/?view=trocas">Página pública de trocas</a>
+        <a className="quick-menu-link" href="/?view=trocas">
+          Página pública de trocas
+        </a>
       </section>
 
       <section className="accordion card">
