@@ -570,7 +570,15 @@ function PrivateApp() {
   }, []);
 
   const sections = useMemo(() => {
-    return ["Todas", ...Array.from(new Set(ALL_STICKERS.map((sticker) => sticker.section)))];
+    const uniqueSections = Array.from(
+      new Set(ALL_STICKERS.map((sticker) => sticker.section))
+    );
+
+    const sortedSections = uniqueSections.sort((a, b) =>
+      a.localeCompare(b, "pt", { sensitivity: "base" })
+    );
+
+    return ["Todas", ...sortedSections];
   }, []);
 
   const currentUserName = USERS.find((user) => user.id === owner)?.name ?? "Diego";
