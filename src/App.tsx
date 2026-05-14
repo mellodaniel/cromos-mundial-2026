@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import html2canvas from "html2canvas";
 import "./index.css";
 import { ALL_STICKERS, USERS, type AlbumOwner, type Sticker } from "./data/stickers";
@@ -8,9 +8,16 @@ import {
   incrementStickerQuantity,
   upsertStickerQuantity,
 } from "./lib/supabase";
+import {
+  createTradeRequest,
+  fetchTradeRequests,
+  updateTradeRequestStatus,
+  type TradeRequest,
+  type TradeStatus,
+} from "./lib/trades";
 
 type FilterType = "all" | "owned" | "missing" | "duplicates";
-type PanelKey = "add" | "reports" | "progress" | "share" | "backup";
+type PanelKey = "add" | "reports" | "progress" | "share" | "trades" | "backup";
 
 type CollectionState = Record<string, { diego: number; arthur: number }>;
 
@@ -39,6 +46,14 @@ function getStatus(quantity: number) {
   if (quantity === 0) return "Falta";
   if (quantity === 1) return "Tenho";
   return "Repetido";
+}
+
+function getOwnerName(owner: AlbumOwner) {
+  return USERS.find((user) => user.id === owner)?.name ?? owner;
+}
+
+function getStickerById(stickerId: string) {
+  return ALL_STICKERS.find((sticker) => sticker.id === stickerId);
 }
 
 function rowsToCollectionState(
@@ -95,7 +110,340 @@ function calculateSummary(state: CollectionState, owner: AlbumOwner) {
   };
 }
 
-function App() {
+function PublicTradesPage() {
+  const [state, setState] = useState<CollectionState>(() => loadInitialState());
+  const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([]);
+  const [cloudStatus, setCloudStatus] = useState("A carregar dados...");
+  const [wantedOwner, setWantedOwner] = useState<AlbumOwner>("diego");
+  const [wantedStickerId, setWantedStickerId] = useState("");
+  const [offeredOwner, setOfferedOwner] = useState<AlbumOwner>("diego");
+  const [offeredStickerCode, setOfferedStickerCode] = useState("");
+  const [personName, setPersonName] = useState("");
+  const [personContact, setPersonContact] = useState("");
+  const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadPublicData = async () => {
+    try {
+      setCloudStatus("A carregar dados da cloud...");
+
+      const [rows, trades] = await Promise.all([
+        fetchCloudCollection(),
+        fetchTradeRequests(),
+      ]);
+
+      const cloudState = rowsToCollectionState(rows);
+      setState(cloudState);
+      saveState(cloudState);
+      setTradeRequests(trades);
+
+      setCloudStatus("Dados atualizados");
+    } catch (error) {
+      console.error(error);
+      setCloudStatus("Não foi possível carregar os dados.");
+    }
+  };
+
+  useEffect(() => {
+    loadPublicData();
+  }, []);
+
+  const repeatedAvailable = useMemo(() => {
+    const reservedCount = new Map<string, number>();
+
+    tradeRequests
+      .filter((request) => request.status === "pending" || request.status === "reserved")
+      .forEach((request) => {
+        const key = `${request.wanted_owner}:${request.wanted_sticker_id}`;
+        reservedCount.set(key, (reservedCount.get(key) ?? 0) + 1);
+      });
+
+    const result: Array<{
+      sticker: Sticker;
+      owner: AlbumOwner;
+      duplicateQty: number;
+      reservedQty: number;
+      availableQty: number;
+    }> = [];
+
+    ALL_STICKERS.forEach((sticker) => {
+      USERS.forEach((user) => {
+        const ownerId = user.id;
+        const quantity = getQuantity(state, sticker.id, ownerId);
+        const duplicateQty = Math.max(0, quantity - 1);
+        const reservedQty = reservedCount.get(`${ownerId}:${sticker.id}`) ?? 0;
+        const availableQty = Math.max(0, duplicateQty - reservedQty);
+
+        if (availableQty > 0) {
+          result.push({
+            sticker,
+            owner: ownerId,
+            duplicateQty,
+            reservedQty,
+            availableQty,
+          });
+        }
+      });
+    });
+
+    return result.sort((a, b) =>
+      `${a.owner}-${a.sticker.label}`.localeCompare(`${b.owner}-${b.sticker.label}`)
+    );
+  }, [state, tradeRequests]);
+
+  const missingByOwner = useMemo(() => {
+    return {
+      diego: ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, "diego") === 0),
+      arthur: ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, "arthur") === 0),
+    };
+  }, [state]);
+
+  const selectedWanted = repeatedAvailable.find(
+    (item) => item.owner === wantedOwner && item.sticker.id === wantedStickerId
+  );
+
+  const handleSelectWanted = (owner: AlbumOwner, stickerId: string) => {
+    setWantedOwner(owner);
+    setWantedStickerId(stickerId);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  };
+
+  const handleSubmitTrade = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!wantedStickerId) {
+      alert("Escolhe primeiro o cromo que queres reservar.");
+      return;
+    }
+
+    if (!offeredStickerCode.trim()) {
+      alert("Indica qual cromo vais entregar.");
+      return;
+    }
+
+    if (!personName.trim() || !personContact.trim()) {
+      alert("Indica o teu nome e contacto.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      await createTradeRequest({
+        wanted_owner: wantedOwner,
+        wanted_sticker_id: wantedStickerId,
+        offered_owner: offeredOwner,
+        offered_sticker_code: offeredStickerCode,
+        person_name: personName,
+        person_contact: personContact,
+        message,
+      });
+
+      alert("Proposta enviada com sucesso. Obrigado!");
+      setWantedStickerId("");
+      setOfferedStickerCode("");
+      setPersonName("");
+      setPersonContact("");
+      setMessage("");
+
+      await loadPublicData();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível enviar a proposta. Tenta novamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <main className="app public-app">
+      <header className="hero">
+        <div>
+          <p className="eyebrow">Trocas Panini</p>
+          <h1>Trocas Mundial 2026</h1>
+          <p className="subtitle">
+            Vê os cromos repetidos disponíveis e propõe uma troca.
+          </p>
+          <p className="cloud-status">☁️ {cloudStatus}</p>
+        </div>
+
+        <a className="private-link" href="/">
+          Ver cadernetas
+        </a>
+      </header>
+
+      <section className="trade-public-summary card">
+        <div>
+          <span>Repetidos disponíveis</span>
+          <strong>{repeatedAvailable.reduce((total, item) => total + item.availableQty, 0)}</strong>
+        </div>
+        <div>
+          <span>Faltam ao Diego</span>
+          <strong>{missingByOwner.diego.length}</strong>
+        </div>
+        <div>
+          <span>Faltam ao Arthur</span>
+          <strong>{missingByOwner.arthur.length}</strong>
+        </div>
+      </section>
+
+      <section className="trade-layout">
+        <div className="card trade-list-card">
+          <h2>Repetidos disponíveis para troca</h2>
+          <p>Escolhe o cromo que queres reservar.</p>
+
+          <div className="trade-sticker-grid">
+            {repeatedAvailable.map((item) => (
+              <button
+                key={`${item.owner}-${item.sticker.id}`}
+                className={`trade-sticker ${
+                  wantedOwner === item.owner && wantedStickerId === item.sticker.id ? "selected" : ""
+                }`}
+                onClick={() => handleSelectWanted(item.owner, item.sticker.id)}
+              >
+                <span>{item.sticker.label}</span>
+                <strong>{item.sticker.name}</strong>
+                <small>
+                  {getOwnerName(item.owner)} · {item.availableQty} disponível
+                </small>
+              </button>
+            ))}
+          </div>
+
+          {repeatedAvailable.length === 0 && (
+            <p className="empty-message">Não há repetidos disponíveis neste momento.</p>
+          )}
+        </div>
+
+        <form className="card trade-form" onSubmit={handleSubmitTrade}>
+          <h2>Propor troca</h2>
+
+          <div className="selected-trade-box">
+            <span>Cromo escolhido</span>
+            <strong>
+              {selectedWanted
+                ? `${getOwnerName(selectedWanted.owner)} — ${selectedWanted.sticker.label} ${selectedWanted.sticker.name}`
+                : "Ainda não escolheste nenhum cromo"}
+            </strong>
+          </div>
+
+          <div className="form-grid">
+            <label>
+              Para qual caderneta?
+              <select
+                value={wantedOwner}
+                onChange={(event) => setWantedOwner(event.target.value as AlbumOwner)}
+              >
+                {USERS.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Cromo que queres reservar
+              <select
+                value={wantedStickerId}
+                onChange={(event) => setWantedStickerId(event.target.value)}
+              >
+                <option value="">Selecionar cromo</option>
+                {repeatedAvailable
+                  .filter((item) => item.owner === wantedOwner)
+                  .map((item) => (
+                    <option key={item.sticker.id} value={item.sticker.id}>
+                      {item.sticker.label} — {item.sticker.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <label>
+              Para quem é o cromo que vais entregar?
+              <select
+                value={offeredOwner}
+                onChange={(event) => setOfferedOwner(event.target.value as AlbumOwner)}
+              >
+                {USERS.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Cromo que vais entregar
+              <input
+                value={offeredStickerCode}
+                onChange={(event) => setOfferedStickerCode(event.target.value)}
+                placeholder="Ex: POR 3, ARG 10, FWC 0, CC 5"
+              />
+            </label>
+
+            <label>
+              O teu nome
+              <input
+                value={personName}
+                onChange={(event) => setPersonName(event.target.value)}
+                placeholder="Ex: João"
+              />
+            </label>
+
+            <label>
+              Contacto / WhatsApp
+              <input
+                value={personContact}
+                onChange={(event) => setPersonContact(event.target.value)}
+                placeholder="Ex: 91xxxxxxx"
+              />
+            </label>
+
+            <label className="full">
+              Mensagem opcional
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Ex: Posso entregar no treino, na escola, etc."
+              />
+            </label>
+          </div>
+
+          <button className="submit-trade" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "A enviar..." : "Enviar proposta de troca"}
+          </button>
+        </form>
+      </section>
+
+      <section className="card public-missing-card">
+        <h2>Cromos que ainda faltam</h2>
+
+        <div className="missing-public-grid">
+          <div>
+            <h3>Diego</h3>
+            <div className="mini-list">
+              {missingByOwner.diego.slice(0, 160).map((sticker) => (
+                <span key={sticker.id}>{sticker.label}</span>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3>Arthur</h3>
+            <div className="mini-list">
+              {missingByOwner.arthur.slice(0, 160).map((sticker) => (
+                <span key={sticker.id}>{sticker.label}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function PrivateApp() {
   const [owner, setOwner] = useState<AlbumOwner>("diego");
   const [state, setState] = useState<CollectionState>(() => loadInitialState());
   const [selectedSection, setSelectedSection] = useState<string>("Todas");
@@ -105,9 +453,24 @@ function App() {
   const [isCloudLoading, setIsCloudLoading] = useState(true);
   const [isMigrating, setIsMigrating] = useState(false);
   const [openPanel, setOpenPanel] = useState<PanelKey | null>(null);
+  const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([]);
+  const [isLoadingTrades, setIsLoadingTrades] = useState(false);
 
   const shareMissingRef = useRef<HTMLDivElement | null>(null);
   const shareDuplicatesRef = useRef<HTMLDivElement | null>(null);
+
+  const loadTradeRequests = async () => {
+    try {
+      setIsLoadingTrades(true);
+      const requests = await fetchTradeRequests();
+      setTradeRequests(requests);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível carregar as propostas de troca.");
+    } finally {
+      setIsLoadingTrades(false);
+    }
+  };
 
   useEffect(() => {
     async function loadCloudData() {
@@ -115,13 +478,18 @@ function App() {
         setIsCloudLoading(true);
         setCloudStatus("A carregar dados da cloud...");
 
-        const rows = await fetchCloudCollection();
+        const [rows, requests] = await Promise.all([
+          fetchCloudCollection(),
+          fetchTradeRequests(),
+        ]);
+
         const cloudState = rowsToCollectionState(rows);
         const localState = loadInitialState();
         const mergedState = mergeStates(localState, cloudState);
 
         setState(mergedState);
         saveState(mergedState);
+        setTradeRequests(requests);
         setCloudStatus("Sincronizado com Supabase");
       } catch (error) {
         console.error(error);
@@ -228,11 +596,16 @@ function App() {
       setIsCloudLoading(true);
       setCloudStatus("A atualizar dados da cloud...");
 
-      const rows = await fetchCloudCollection();
+      const [rows, requests] = await Promise.all([
+        fetchCloudCollection(),
+        fetchTradeRequests(),
+      ]);
+
       const cloudState = rowsToCollectionState(rows);
 
       setState(cloudState);
       saveState(cloudState);
+      setTradeRequests(requests);
       setCloudStatus("Sincronizado com Supabase");
     } catch (error) {
       console.error(error);
@@ -465,6 +838,17 @@ function App() {
     link.click();
   };
 
+  const updateTradeStatus = async (tradeRequestId: number, status: TradeStatus) => {
+    try {
+      await updateTradeRequestStatus(tradeRequestId, status);
+      await loadTradeRequests();
+      alert("Estado da proposta atualizado.");
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível atualizar a proposta.");
+    }
+  };
+
   const renderPanelHeader = (panel: PanelKey, title: string) => (
     <button className="accordion-header" onClick={() => togglePanel(panel)}>
       <span>{title}</span>
@@ -576,7 +960,7 @@ function App() {
         >
           Ver repetidos
         </button>
-        <button onClick={() => setOpenPanel("share")}>Partilhar</button>
+        <a href="/?view=trocas">Página pública de trocas</a>
       </section>
 
       <section className="accordion card">
@@ -738,6 +1122,73 @@ function App() {
       </section>
 
       <section className="accordion card">
+        {renderPanelHeader("trades", "Propostas de troca")}
+
+        {openPanel === "trades" && (
+          <div className="accordion-content">
+            <div className="trade-admin-header">
+              <div>
+                <h2>Propostas recebidas</h2>
+                <p>Gerir reservas e propostas enviadas pela página pública.</p>
+              </div>
+              <button onClick={loadTradeRequests} disabled={isLoadingTrades}>
+                {isLoadingTrades ? "A carregar..." : "Atualizar propostas"}
+              </button>
+            </div>
+
+            <div className="trade-admin-list">
+              {tradeRequests.map((request) => {
+                const wantedSticker = getStickerById(request.wanted_sticker_id);
+
+                return (
+                  <article className="trade-admin-card" key={request.id}>
+                    <div>
+                      <span className={`trade-status ${request.status}`}>
+                        {request.status}
+                      </span>
+                      <h3>{request.person_name}</h3>
+                      <p>
+                        Quer:{" "}
+                        <strong>
+                          {getOwnerName(request.wanted_owner)} —{" "}
+                          {wantedSticker?.label ?? request.wanted_sticker_id}
+                        </strong>
+                      </p>
+                      <p>
+                        Entrega para{" "}
+                        {request.offered_owner ? getOwnerName(request.offered_owner) : "—"}:{" "}
+                        <strong>{request.offered_sticker_code}</strong>
+                      </p>
+                      <p>
+                        Contacto: <strong>{request.person_contact}</strong>
+                      </p>
+                      {request.message && <p>Mensagem: {request.message}</p>}
+                    </div>
+
+                    <div className="trade-admin-actions">
+                      <button onClick={() => updateTradeStatus(request.id, "reserved")}>
+                        Reservar
+                      </button>
+                      <button onClick={() => updateTradeStatus(request.id, "completed")}>
+                        Concluir
+                      </button>
+                      <button className="danger" onClick={() => updateTradeStatus(request.id, "cancelled")}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+
+              {tradeRequests.length === 0 && (
+                <p className="empty-message">Ainda não existem propostas de troca.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="accordion card">
         {renderPanelHeader("progress", "Progresso por país / secção")}
 
         {openPanel === "progress" && (
@@ -880,6 +1331,17 @@ function App() {
       </section>
     </main>
   );
+}
+
+function App() {
+  const isPublicTradesView =
+    new URLSearchParams(window.location.search).get("view") === "trocas";
+
+  if (isPublicTradesView) {
+    return <PublicTradesPage />;
+  }
+
+  return <PrivateApp />;
 }
 
 export default App;
