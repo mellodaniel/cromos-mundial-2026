@@ -123,6 +123,41 @@ function formatStockDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function getFriendlyStockMessage(statusText: string | null) {
+  if (!statusText) {
+    return "Ainda não existe leitura automática para esta loja.";
+  }
+
+  const text = statusText.toLowerCase();
+
+  if (
+    text.includes("http 403") ||
+    text.includes("403") ||
+    text.includes("forbidden")
+  ) {
+    return "Esta loja bloqueou a verificação automática. Usa o botão “Abrir loja” para confirmar diretamente.";
+  }
+
+  if (
+    text.includes("http2") ||
+    text.includes("stream error") ||
+    text.includes("error sending request") ||
+    text.includes("sendrequest")
+  ) {
+    return "Não foi possível verificar automaticamente esta loja neste momento. Usa o botão “Abrir loja” para confirmar diretamente.";
+  }
+
+  if (
+    text.includes("erro ao consultar") ||
+    text.includes("typeerror") ||
+    text.includes("failed to fetch")
+  ) {
+    return "A verificação automática falhou nesta tentativa. Usa o botão “Abrir loja” para confirmar diretamente.";
+  }
+
+  return statusText;
+}
+
 function StockPage() {
   const [items, setItems] = useState<StockWatchItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -292,11 +327,10 @@ function StockPage() {
                       {formatStockDate(item.last_success_at)}
                     </p>
 
-                    {item.status_text && (
-                      <p>
-                        <strong>Leitura automática:</strong> {item.status_text}
-                      </p>
-                    )}
+                    <p>
+                      <strong>Leitura automática:</strong>{" "}
+                      {getFriendlyStockMessage(item.status_text)}
+                    </p>
 
                     {item.notes && (
                       <p>
