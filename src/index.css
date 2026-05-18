@@ -1099,3 +1099,190 @@ textarea:focus {
   font-weight: 700;
   line-height: 1.45;
 }
+/* =========================
+   Stock Watch Page
+   ========================= */
+
+   .stock-app .hero {
+    margin-bottom: 20px;
+  }
+  
+  .stock-summary {
+    margin-bottom: 18px;
+  }
+  
+  .stock-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  
+  .stock-info div {
+    padding: 16px;
+    border-radius: 18px;
+    background: #f8fafc;
+  }
+  
+  .stock-info strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--blue);
+  }
+  
+  .stock-info span {
+    color: var(--muted);
+    font-weight: 800;
+  }
+  
+  .stock-list {
+    display: grid;
+    gap: 16px;
+  }
+  
+  .stock-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 20px;
+    align-items: center;
+    padding: 22px;
+  }
+  
+  .stock-card.available {
+    border-color: rgba(19, 138, 67, 0.28);
+  }
+  
+  .stock-card.unavailable {
+    border-color: rgba(217, 45, 32, 0.24);
+  }
+  
+  .stock-card.unknown {
+    border-color: rgba(154, 103, 0, 0.24);
+  }
+  
+  .stock-main {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .stock-status-icon {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+    background: #f8fafc;
+    font-size: 1.4rem;
+  }
+  
+  .stock-main h2 {
+    margin: 0 0 6px;
+    color: var(--blue);
+  }
+  
+  .stock-main p {
+    margin: 0;
+    color: var(--muted);
+    font-weight: 750;
+  }
+  
+  .stock-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  
+  .stock-tags span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #eef3fb;
+    color: #203653;
+    font-size: 0.84rem;
+    font-weight: 950;
+  }
+  
+  .stock-status.available {
+    color: var(--success);
+    background: #d1fadf;
+  }
+  
+  .stock-status.unavailable {
+    color: var(--danger);
+    background: #fee4e2;
+  }
+  
+  .stock-status.unknown {
+    color: #9a6700;
+    background: #fff3c4;
+  }
+  
+  .stock-details {
+    grid-column: 1 / -1;
+    padding: 16px;
+    border-radius: 16px;
+    background: #f8fafc;
+  }
+  
+  .stock-details p {
+    margin: 6px 0;
+    color: #344054;
+    font-weight: 650;
+  }
+  
+  .stock-open-link {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 14px;
+    background: var(--yellow);
+    color: #101828;
+    text-decoration: none;
+    font-weight: 950;
+    white-space: nowrap;
+  }
+  
+  .empty-stock {
+    padding: 22px;
+    color: var(--muted);
+    font-weight: 800;
+  }
+  
+  @media (max-width: 940px) {
+    .quick-menu {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  
+    .stock-info {
+      grid-template-columns: 1fr;
+    }
+  
+    .stock-card {
+      grid-template-columns: 1fr;
+    }
+  
+    .stock-open-link {
+      width: 100%;
+    }
+  }
+  
+  @media (max-width: 520px) {
+    .quick-menu {
+      grid-template-columns: 1fr;
+    }
+  
+    .stock-card {
+      padding: 18px;
+    }
+  
+    .stock-main {
+      flex-direction: column;
+    }
+  }

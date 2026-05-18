@@ -15,6 +15,7 @@ import {
   type TradeRequest,
   type TradeStatus,
 } from "./lib/trades";
+import { fetchStockWatch, type StockStatus, type StockWatchItem } from "./lib/stock";
 
 type FilterType = "all" | "owned" | "missing" | "duplicates";
 type PanelKey = "add" | "reports" | "progress" | "share" | "trades" | "backup";
@@ -94,6 +95,182 @@ function calculateSummary(state: CollectionState, owner: AlbumOwner) {
     duplicates,
     percentage: total > 0 ? Math.round((owned / total) * 100) : 0,
   };
+}
+
+function getStockStatusLabel(status: StockStatus) {
+  if (status === "available") return "Disponível";
+  if (status === "unavailable") return "Indisponível";
+  return "A confirmar";
+}
+
+function getStockStatusIcon(status: StockStatus) {
+  if (status === "available") return "🟢";
+  if (status === "unavailable") return "🔴";
+  return "🟡";
+}
+
+function formatStockDate(value: string | null) {
+  if (!value) return "Ainda não verificado";
+
+  return new Intl.DateTimeFormat("pt-PT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function StockPage() {
+  const [items, setItems] = useState<StockWatchItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState("A carregar disponibilidade...");
+
+  const loadStock = async () => {
+    try {
+      setIsLoading(true);
+      setStatusMessage("A carregar disponibilidade...");
+
+      const stockItems = await fetchStockWatch();
+
+      setItems(stockItems);
+      setStatusMessage("Disponibilidade atualizada");
+    } catch (error) {
+      console.error(error);
+      setStatusMessage("Não foi possível carregar a disponibilidade.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStock();
+  }, []);
+
+  const summary = useMemo(() => {
+    return {
+      available: items.filter((item) => item.status === "available").length,
+      unavailable: items.filter((item) => item.status === "unavailable").length,
+      unknown: items.filter((item) => item.status === "unknown").length,
+    };
+  }, [items]);
+
+  const lastChecked = useMemo(() => {
+    const dates = items
+      .map((item) => item.last_checked_at)
+      .filter(Boolean)
+      .map((value) => new Date(String(value)).getTime())
+      .filter((value) => !Number.isNaN(value));
+
+    if (dates.length === 0) return null;
+
+    return new Date(Math.max(...dates)).toISOString();
+  }, [items]);
+
+  return (
+    <main className="app stock-app">
+      <header className="hero public-hero">
+        <div>
+          <p className="eyebrow">Stock online</p>
+          <h1>Saquetas Mundial 2026</h1>
+          <p className="subtitle">
+            Monitorização automática de disponibilidade online de saquetas Panini.
+          </p>
+          <p className="cloud-status">
+            ☁️ {isLoading ? "A atualizar..." : statusMessage}
+          </p>
+        </div>
+      </header>
+
+      <section className="trade-public-summary stock-summary card">
+        <div>
+          <span>Disponíveis</span>
+          <strong>{summary.available}</strong>
+        </div>
+        <div>
+          <span>Indisponíveis</span>
+          <strong>{summary.unavailable}</strong>
+        </div>
+        <div>
+          <span>A confirmar</span>
+          <strong>{summary.unknown}</strong>
+        </div>
+      </section>
+
+      <section className="stock-info card">
+        <div>
+          <strong>Última verificação</strong>
+          <span>{formatStockDate(lastChecked)}</span>
+        </div>
+
+        <div>
+          <strong>Atualização automática</strong>
+          <span>3 vezes por dia: manhã, tarde e noite</span>
+        </div>
+      </section>
+
+      <section className="stock-list">
+        {items.map((item) => (
+          <article className={`stock-card card ${item.status}`} key={item.id}>
+            <div className="stock-main">
+              <div className="stock-status-icon">
+                {getStockStatusIcon(item.status)}
+              </div>
+
+              <div>
+                <h2>{item.source_name}</h2>
+                <p>{item.product_name}</p>
+
+                <div className="stock-tags">
+                  <span className={`stock-status ${item.status}`}>
+                    {getStockStatusLabel(item.status)}
+                  </span>
+
+                  {item.price && <span>{item.price}</span>}
+                </div>
+              </div>
+            </div>
+
+            <div className="stock-details">
+              <p>
+                <strong>Última tentativa:</strong>{" "}
+                {formatStockDate(item.last_checked_at)}
+              </p>
+
+              <p>
+                <strong>Último sucesso:</strong>{" "}
+                {formatStockDate(item.last_success_at)}
+              </p>
+
+              {item.status_text && (
+                <p>
+                  <strong>Leitura automática:</strong> {item.status_text}
+                </p>
+              )}
+
+              {item.notes && (
+                <p>
+                  <strong>Notas:</strong> {item.notes}
+                </p>
+              )}
+            </div>
+
+            <a
+              className="stock-open-link"
+              href={item.product_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Abrir loja
+            </a>
+          </article>
+        ))}
+
+        {items.length === 0 && !isLoading && (
+          <section className="card empty-stock">
+            <p>Ainda não existem fontes de stock configuradas.</p>
+          </section>
+        )}
+      </section>
+    </main>
+  );
 }
 
 function PublicTradesPage() {
@@ -1026,7 +1203,9 @@ function PrivateApp() {
 
       <section className="quick-menu">
         <button onClick={() => setOpenPanel("add")}>Adicionar cromos</button>
+
         <button onClick={() => setOpenPanel("reports")}>Ver faltas</button>
+
         <button
           onClick={() => {
             setOpenPanel("reports");
@@ -1035,8 +1214,13 @@ function PrivateApp() {
         >
           Ver repetidos
         </button>
+
         <a className="quick-menu-link" href="/?view=trocas">
           Página pública de trocas
+        </a>
+
+        <a className="quick-menu-link" href="/?view=stock">
+          Stock de saquetas
         </a>
       </section>
 
@@ -1411,11 +1595,14 @@ function PrivateApp() {
 }
 
 function App() {
-  const isPublicTradesView =
-    new URLSearchParams(window.location.search).get("view") === "trocas";
+  const view = new URLSearchParams(window.location.search).get("view");
 
-  if (isPublicTradesView) {
+  if (view === "trocas") {
     return <PublicTradesPage />;
+  }
+
+  if (view === "stock") {
+    return <StockPage />;
   }
 
   return <PrivateApp />;
