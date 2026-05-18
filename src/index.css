@@ -1286,3 +1286,123 @@ textarea:focus {
       flex-direction: column;
     }
   }
+  /* =========================
+   Stock Accordion Layout
+   ========================= */
+
+.stock-accordion-list {
+  display: grid;
+  gap: 14px;
+}
+
+.stock-accordion {
+  overflow: hidden;
+}
+
+.stock-accordion.available {
+  border-color: rgba(19, 138, 67, 0.28);
+}
+
+.stock-accordion.unavailable {
+  border-color: rgba(217, 45, 32, 0.24);
+}
+
+.stock-accordion.unknown {
+  border-color: rgba(154, 103, 0, 0.24);
+}
+
+.stock-accordion-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #101828;
+  text-align: left;
+}
+
+.stock-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.stock-status-icon-small {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: #f8fafc;
+  font-size: 1.25rem;
+}
+
+.stock-header-left h2 {
+  margin: 0 0 4px;
+  color: var(--blue);
+  font-size: 1.1rem;
+}
+
+.stock-header-left p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.stock-header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stock-price {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef3fb;
+  color: #203653;
+  font-size: 0.84rem;
+  font-weight: 950;
+}
+
+.stock-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: var(--yellow);
+  color: #101828;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.stock-accordion-content {
+  display: grid;
+  gap: 14px;
+  padding: 0 20px 20px;
+}
+
+@media (max-width: 700px) {
+  .stock-accordion-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stock-header-right {
+    justify-content: flex-start;
+  }
+
+  .stock-open-link {
+    width: 100%;
+  }
+}

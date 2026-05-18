@@ -122,6 +122,7 @@ function StockPage() {
   const [items, setItems] = useState<StockWatchItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState("A carregar disponibilidade...");
+  const [openStockId, setOpenStockId] = useState<number | null>(null);
 
   const loadStock = async () => {
     try {
@@ -163,6 +164,10 @@ function StockPage() {
 
     return new Date(Math.max(...dates)).toISOString();
   }, [items]);
+
+  const toggleStockItem = (id: number) => {
+    setOpenStockId((current) => (current === id ? null : id));
+  };
 
   return (
     <main className="app stock-app">
@@ -206,62 +211,77 @@ function StockPage() {
         </div>
       </section>
 
-      <section className="stock-list">
-        {items.map((item) => (
-          <article className={`stock-card card ${item.status}`} key={item.id}>
-            <div className="stock-main">
-              <div className="stock-status-icon">
-                {getStockStatusIcon(item.status)}
-              </div>
+      <section className="stock-accordion-list">
+        {items.map((item) => {
+          const isOpen = openStockId === item.id;
 
-              <div>
-                <h2>{item.source_name}</h2>
-                <p>{item.product_name}</p>
+          return (
+            <article className={`stock-accordion card ${item.status}`} key={item.id}>
+              <button
+                className="stock-accordion-header"
+                onClick={() => toggleStockItem(item.id)}
+              >
+                <div className="stock-header-left">
+                  <span className="stock-status-icon-small">
+                    {getStockStatusIcon(item.status)}
+                  </span>
 
-                <div className="stock-tags">
+                  <div>
+                    <h2>{item.source_name}</h2>
+                    <p>{item.product_name}</p>
+                  </div>
+                </div>
+
+                <div className="stock-header-right">
                   <span className={`stock-status ${item.status}`}>
                     {getStockStatusLabel(item.status)}
                   </span>
 
-                  {item.price && <span>{item.price}</span>}
+                  {item.price && <span className="stock-price">{item.price}</span>}
+
+                  <strong className="stock-toggle">{isOpen ? "−" : "+"}</strong>
                 </div>
-              </div>
-            </div>
+              </button>
 
-            <div className="stock-details">
-              <p>
-                <strong>Última tentativa:</strong>{" "}
-                {formatStockDate(item.last_checked_at)}
-              </p>
+              {isOpen && (
+                <div className="stock-accordion-content">
+                  <div className="stock-details">
+                    <p>
+                      <strong>Última tentativa:</strong>{" "}
+                      {formatStockDate(item.last_checked_at)}
+                    </p>
 
-              <p>
-                <strong>Último sucesso:</strong>{" "}
-                {formatStockDate(item.last_success_at)}
-              </p>
+                    <p>
+                      <strong>Último sucesso:</strong>{" "}
+                      {formatStockDate(item.last_success_at)}
+                    </p>
 
-              {item.status_text && (
-                <p>
-                  <strong>Leitura automática:</strong> {item.status_text}
-                </p>
+                    {item.status_text && (
+                      <p>
+                        <strong>Leitura automática:</strong> {item.status_text}
+                      </p>
+                    )}
+
+                    {item.notes && (
+                      <p>
+                        <strong>Notas:</strong> {item.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  <a
+                    className="stock-open-link"
+                    href={item.product_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Abrir loja
+                  </a>
+                </div>
               )}
-
-              {item.notes && (
-                <p>
-                  <strong>Notas:</strong> {item.notes}
-                </p>
-              )}
-            </div>
-
-            <a
-              className="stock-open-link"
-              href={item.product_url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Abrir loja
-            </a>
-          </article>
-        ))}
+            </article>
+          );
+        })}
 
         {items.length === 0 && !isLoading && (
           <section className="card empty-stock">
