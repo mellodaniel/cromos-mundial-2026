@@ -30,3 +30,16 @@ export async function fetchStockWatch() {
 
   return (data ?? []) as StockWatchItem[];
 }
+
+export async function checkStockNow() {
+  const { data, error } = await supabase.functions.invoke("check-stock", {
+    body: {},
+  });
+
+  if (error) {
+    console.error("Erro checkStockNow:", error);
+    throw error;
+  }
+
+  return data;
+}

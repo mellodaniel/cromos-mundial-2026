@@ -15,7 +15,12 @@ import {
   type TradeRequest,
   type TradeStatus,
 } from "./lib/trades";
-import { fetchStockWatch, type StockStatus, type StockWatchItem } from "./lib/stock";
+import {
+  checkStockNow,
+  fetchStockWatch,
+  type StockStatus,
+  type StockWatchItem,
+} from "./lib/stock";
 
 type FilterType = "all" | "owned" | "missing" | "duplicates";
 type PanelKey = "add" | "reports" | "progress" | "share" | "trades" | "backup";
@@ -121,6 +126,7 @@ function formatStockDate(value: string | null) {
 function StockPage() {
   const [items, setItems] = useState<StockWatchItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCheckingNow, setIsCheckingNow] = useState(false);
   const [statusMessage, setStatusMessage] = useState("A carregar disponibilidade...");
   const [openStockId, setOpenStockId] = useState<number | null>(null);
 
@@ -138,6 +144,24 @@ function StockPage() {
       setStatusMessage("Não foi possível carregar a disponibilidade.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCheckStockNow = async () => {
+    try {
+      setIsCheckingNow(true);
+      setStatusMessage("A verificar disponibilidade agora...");
+
+      await checkStockNow();
+      await loadStock();
+
+      setStatusMessage("Disponibilidade verificada agora");
+    } catch (error) {
+      console.error(error);
+      setStatusMessage("Não foi possível verificar agora.");
+      alert("Não foi possível verificar a disponibilidade agora.");
+    } finally {
+      setIsCheckingNow(false);
     }
   };
 
@@ -179,7 +203,7 @@ function StockPage() {
             Monitorização automática de disponibilidade online de saquetas Panini.
           </p>
           <p className="cloud-status">
-            ☁️ {isLoading ? "A atualizar..." : statusMessage}
+            ☁️ {isLoading || isCheckingNow ? "A atualizar..." : statusMessage}
           </p>
         </div>
       </header>
@@ -208,6 +232,18 @@ function StockPage() {
         <div>
           <strong>Atualização automática</strong>
           <span>3 vezes por dia: manhã, tarde e noite</span>
+        </div>
+
+        <div>
+          <strong>Verificação manual</strong>
+          <button
+            className="stock-open-link"
+            type="button"
+            onClick={handleCheckStockNow}
+            disabled={isCheckingNow}
+          >
+            {isCheckingNow ? "A verificar..." : "Verificar agora"}
+          </button>
         </div>
       </section>
 
