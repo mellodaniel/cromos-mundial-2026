@@ -28,11 +28,19 @@ import {
   type V2PerfectTradeSuggestion,
   type V2Suggestion,
 } from "./lib/v2Suggestions";
+import {
+  createV2TradeRequest,
+  fetchV2TradeRequestsForProfile,
+  updateV2TradeRequestStatus,
+  type V2TradeRequest,
+  type V2TradeStatus,
+} from "./lib/v2Trades";
 
 type V2Section =
   | "home"
   | "album"
   | "suggestions"
+  | "trade-requests"
   | "group"
   | "admin-users"
   | "admin-groups"
@@ -54,6 +62,14 @@ function getStickerQuantity(album: V2AlbumState, stickerId: string) {
 
 function getStickerById(stickerId: string) {
   return ALL_STICKERS.find((sticker) => sticker.id === stickerId);
+}
+
+function getTradeStatusLabel(status: V2TradeStatus) {
+  if (status === "pending") return "Pendente";
+  if (status === "reserved") return "Reservada";
+  if (status === "accepted") return "Aceite";
+  if (status === "completed") return "Concluída";
+  return "Cancelada";
 }
 
 function calculateV2AlbumSummary(album: V2AlbumState) {
@@ -85,10 +101,199 @@ function getStickerStatus(quantity: number) {
   return "Repetido";
 }
 
+function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
+  const [requests, setRequests] = useState<V2TradeRequest[]>([]);
+  const [users, setUsers] = useState<V2UserRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState("A carregar propostas...");
+
+  const loadTradeRequests = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar propostas...");
+
+      const [tradeRows, userRows] = await Promise.all([
+        fetchV2TradeRequestsForProfile(profile.id),
+        fetchV2Users(),
+      ]);
+
+      setRequests(tradeRows);
+      setUsers(userRows);
+      setStatus(`${tradeRows.length} proposta(s) encontrada(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar as propostas.");
+      alert("Não foi possível carregar as propostas de troca.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTradeRequests();
+  }, [profile.id]);
+
+  const getUserName = (profileId: string) => {
+    return users.find((user) => user.id === profileId)?.display_name ?? "Utilizador";
+  };
+
+  const sentRequests = requests.filter((request) => request.from_profile_id === profile.id);
+  const receivedRequests = requests.filter((request) => request.to_profile_id === profile.id);
+
+  const handleStatusUpdate = async (
+    requestId: string,
+    nextStatus: V2TradeStatus
+  ) => {
+    try {
+      await updateV2TradeRequestStatus(requestId, nextStatus);
+      await loadTradeRequests();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível atualizar a proposta.");
+    }
+  };
+
+  const renderRequestCard = (request: V2TradeRequest, type: "sent" | "received") => {
+    const wantedSticker = getStickerById(request.wanted_sticker_id);
+    const offeredSticker = request.offered_sticker_id
+      ? getStickerById(request.offered_sticker_id)
+      : null;
+
+    const otherPersonName =
+      type === "sent"
+        ? getUserName(request.to_profile_id)
+        : getUserName(request.from_profile_id);
+
+    return (
+      <article className="v2-trade-request-card" key={request.id}>
+        <div className="v2-trade-request-main">
+          <span className={`v2-trade-status ${request.status}`}>
+            {getTradeStatusLabel(request.status)}
+          </span>
+
+          <h3>
+            {type === "sent"
+              ? `Proposta enviada para ${otherPersonName}`
+              : `Proposta recebida de ${otherPersonName}`}
+          </h3>
+
+          <div className="v2-trade-request-flow">
+            <div>
+              <span>{type === "sent" ? "Queres receber" : "Pedem-te"}</span>
+              <strong>{wantedSticker?.label ?? request.wanted_sticker_id}</strong>
+              <p>{wantedSticker?.name ?? "Cromo"}</p>
+            </div>
+
+            <div className="v2-trade-arrow">⇄</div>
+
+            <div>
+              <span>{type === "sent" ? "Ofereces" : "Oferecem-te"}</span>
+              <strong>
+                {offeredSticker?.label ?? request.offered_sticker_id ?? "—"}
+              </strong>
+              <p>{offeredSticker?.name ?? "Sem cromo indicado"}</p>
+            </div>
+          </div>
+
+          {request.message && <p className="v2-trade-message">{request.message}</p>}
+        </div>
+
+        <div className="v2-trade-request-actions">
+          {type === "received" && request.status === "pending" && (
+            <button onClick={() => handleStatusUpdate(request.id, "accepted")}>
+              Aceitar
+            </button>
+          )}
+
+          {request.status !== "completed" && request.status !== "cancelled" && (
+            <>
+              <button onClick={() => handleStatusUpdate(request.id, "completed")}>
+                Concluir
+              </button>
+
+              <button
+                className="danger"
+                onClick={() => handleStatusUpdate(request.id, "cancelled")}
+              >
+                Cancelar
+              </button>
+            </>
+          )}
+        </div>
+      </article>
+    );
+  };
+
+  return (
+    <section className="card v2-content-card">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Trocas</p>
+          <h2>Propostas de troca</h2>
+          <p>{status}</p>
+        </div>
+
+        <button onClick={loadTradeRequests} disabled={isLoading}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <section className="v2-suggestions-summary">
+        <div>
+          <span>Recebidas</span>
+          <strong>{receivedRequests.length}</strong>
+        </div>
+
+        <div>
+          <span>Enviadas</span>
+          <strong>{sentRequests.length}</strong>
+        </div>
+      </section>
+
+      <section className="v2-trade-requests-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Para ti</p>
+            <h3>Propostas recebidas</h3>
+          </div>
+          <span>{receivedRequests.length}</span>
+        </div>
+
+        <div className="v2-trade-requests-list">
+          {receivedRequests.map((request) => renderRequestCard(request, "received"))}
+
+          {receivedRequests.length === 0 && !isLoading && (
+            <p className="empty-message">Ainda não recebeste propostas de troca.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="v2-trade-requests-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Criadas por ti</p>
+            <h3>Propostas enviadas</h3>
+          </div>
+          <span>{sentRequests.length}</span>
+        </div>
+
+        <div className="v2-trade-requests-list">
+          {sentRequests.map((request) => renderRequestCard(request, "sent"))}
+
+          {sentRequests.length === 0 && !isLoading && (
+            <p className="empty-message">Ainda não enviaste propostas de troca.</p>
+          )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
 function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
   const [suggestions, setSuggestions] = useState<V2Suggestion[]>([]);
   const [perfectTrades, setPerfectTrades] = useState<V2PerfectTradeSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreatingTrade, setIsCreatingTrade] = useState(false);
   const [status, setStatus] = useState("A carregar sugestões...");
   const [search, setSearch] = useState("");
 
@@ -120,6 +325,42 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
   useEffect(() => {
     loadSuggestions();
   }, [profile.id]);
+
+  const handleCreatePerfectTrade = async (trade: V2PerfectTradeSuggestion) => {
+    if (!profile.group_id) {
+      alert("Este utilizador não tem grupo associado.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Queres propor esta troca a ${trade.other_name}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsCreatingTrade(true);
+      setStatus("A criar proposta de troca...");
+
+      await createV2TradeRequest({
+        group_id: profile.group_id,
+        from_profile_id: profile.id,
+        to_profile_id: trade.other_profile_id,
+        wanted_sticker_id: trade.sticker_i_need_id,
+        offered_sticker_id: trade.sticker_they_need_id,
+        message: "Proposta criada a partir de uma troca perfeita sugerida pela app.",
+      });
+
+      setStatus("Proposta de troca criada.");
+      alert("Proposta de troca criada com sucesso.");
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível criar a proposta.");
+      alert("Não foi possível criar a proposta de troca.");
+    } finally {
+      setIsCreatingTrade(false);
+    }
+  };
 
   const filteredSuggestions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -194,7 +435,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
           </p>
         </div>
 
-        <button onClick={loadSuggestions} disabled={isLoading}>
+        <button onClick={loadSuggestions} disabled={isLoading || isCreatingTrade}>
           {isLoading ? "A carregar..." : "Atualizar"}
         </button>
       </div>
@@ -277,6 +518,14 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
                     </small>
                   </div>
                 </div>
+
+                <button
+                  className="v2-propose-trade-button"
+                  onClick={() => handleCreatePerfectTrade(trade)}
+                  disabled={isCreatingTrade}
+                >
+                  {isCreatingTrade ? "A criar..." : "Propor esta troca"}
+                </button>
               </article>
             );
           })}
@@ -905,6 +1154,10 @@ function V2Dashboard({
       return <V2SuggestionsPage profile={profile} />;
     }
 
+    if (section === "trade-requests") {
+      return <V2TradeRequestsPage profile={profile} />;
+    }
+
     if (section === "group") {
       return (
         <section className="card v2-content-card">
@@ -981,14 +1234,23 @@ function V2Dashboard({
           <p>Ver quem tem cromos repetidos que me faltam.</p>
         </button>
 
-        <button className="card v2-menu-card" onClick={() => setSection("group")}>
+        <button
+          className="card v2-menu-card"
+          onClick={() => setSection("trade-requests")}
+        >
           <span>03</span>
+          <h2>Propostas de troca</h2>
+          <p>Acompanhar propostas enviadas e recebidas.</p>
+        </button>
+
+        <button className="card v2-menu-card" onClick={() => setSection("group")}>
+          <span>04</span>
           <h2>O meu grupo</h2>
           <p>Ver membros, progresso e informação do grupo.</p>
         </button>
 
         <button className="card v2-menu-card" onClick={() => setSection("stock")}>
-          <span>04</span>
+          <span>05</span>
           <h2>Stock de saquetas</h2>
           <p>Consultar disponibilidade online das saquetas.</p>
         </button>
