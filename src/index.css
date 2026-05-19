@@ -1880,3 +1880,10 @@ textarea:focus {
       justify-items: start;
     }
   }
+  .hero-title-line {
+    display: block;
+    font-size: 0.58em;
+    line-height: 1.1;
+    margin-top: 4px;
+    opacity: 0.92;
+  }

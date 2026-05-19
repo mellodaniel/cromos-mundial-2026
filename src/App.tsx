@@ -1779,10 +1779,10 @@ function V2Dashboard({
     <main className="app v2-app">
       <header className="hero public-hero">
         <div>
-          <p className="eyebrow">Cromos Mundial 2026</p>
-          <h1>V2 Plataforma Aberta</h1>
+          <p className="eyebrow">Mundial FIFA 2026</p>
+          <h1>Cromos & Trocas</h1>
           <p className="subtitle">
-            Colecionadores, cadernetas individuais e trocas automáticas entre todos.
+            Controla a tua caderneta, vê os repetidos e encontra trocas com outros colecionadores.
           </p>
           <p className="cloud-status">
             🔐 {profile.display_name} · {getRoleLabel(profile.role)} · {summaryStatus}
@@ -2071,9 +2071,9 @@ function V2LoginPage() {
       <main className="app">
         <header className="hero public-hero">
           <div>
-            <p className="eyebrow">Cromos Mundial 2026</p>
+            <p className="eyebrow">Mundial FIFA 2026</p>
             <h1>V2</h1>
-            <p className="subtitle">A carregar a nova área multiutilizador...</p>
+            <p className="subtitle">A carregar a tua caderneta...</p>
             <p className="cloud-status">⏳ {status}</p>
           </div>
         </header>
@@ -2089,11 +2089,10 @@ function V2LoginPage() {
     <main className="app v2-app">
       <header className="hero public-hero">
         <div>
-          <p className="eyebrow">Cromos Mundial 2026</p>
-          <h1>V2 Plataforma Aberta</h1>
+          <p className="eyebrow">Mundial FIFA 2026</p>
+          <h1>Cromos & Trocas</h1>
           <p className="subtitle">
-            Cria a tua conta, controla a tua caderneta e encontra trocas com outros
-            colecionadores.
+            Controla a tua caderneta, vê os repetidos e encontra trocas com outros colecionadores.
           </p>
           <p className="cloud-status">🔐 {status}</p>
         </div>
@@ -2118,7 +2117,7 @@ function V2LoginPage() {
 
         {mode === "login" ? (
           <>
-            <h2>Entrar na V2</h2>
+            <h2>Entrar na app</h2>
             <p>Usa apenas o utilizador e a senha. Não é necessário email.</p>
 
             <form className="v2-login-form" onSubmit={handleSignIn}>
