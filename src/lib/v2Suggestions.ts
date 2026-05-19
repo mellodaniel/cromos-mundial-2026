@@ -31,31 +31,24 @@ type V2AlbumRow = {
   quantity: number;
 };
 
-export async function fetchV2GroupProfiles(groupId: string) {
+export async function fetchV2ActiveProfiles() {
   const { data, error } = await supabase
     .from("v2_profiles")
     .select("*")
-    .eq("group_id", groupId)
     .eq("is_active", true)
     .order("display_name", { ascending: true });
 
   if (error) {
-    console.error("Erro fetchV2GroupProfiles:", error);
+    console.error("Erro fetchV2ActiveProfiles:", error);
     throw error;
   }
 
   return (data ?? []) as V2Profile[];
 }
 
-export async function fetchV2GroupAlbumRows(groupId: string) {
-  const profiles = await fetchV2GroupProfiles(groupId);
-  const profileIds = profiles.map((profile) => profile.id);
-
+export async function fetchV2AllAlbumRows(profileIds: string[]) {
   if (profileIds.length === 0) {
-    return {
-      profiles,
-      rows: [] as V2AlbumRow[],
-    };
+    return [] as V2AlbumRow[];
   }
 
   const { data, error } = await supabase
@@ -64,13 +57,21 @@ export async function fetchV2GroupAlbumRows(groupId: string) {
     .in("profile_id", profileIds);
 
   if (error) {
-    console.error("Erro fetchV2GroupAlbumRows:", error);
+    console.error("Erro fetchV2AllAlbumRows:", error);
     throw error;
   }
 
+  return (data ?? []) as V2AlbumRow[];
+}
+
+async function fetchOpenPlatformData() {
+  const profiles = await fetchV2ActiveProfiles();
+  const profileIds = profiles.map((profile) => profile.id);
+  const rows = await fetchV2AllAlbumRows(profileIds);
+
   return {
     profiles,
-    rows: (data ?? []) as V2AlbumRow[],
+    rows,
   };
 }
 
@@ -85,11 +86,7 @@ function buildQuantityMap(rows: V2AlbumRow[]) {
 }
 
 export async function fetchV2SuggestionsForProfile(profile: V2Profile) {
-  if (!profile.group_id) {
-    return [];
-  }
-
-  const { profiles, rows } = await fetchV2GroupAlbumRows(profile.group_id);
+  const { profiles, rows } = await fetchOpenPlatformData();
 
   const currentProfileRows = rows.filter(
     (row) => row.profile_id === profile.id
@@ -136,11 +133,7 @@ export async function fetchV2SuggestionsForProfile(profile: V2Profile) {
 }
 
 export async function fetchV2PerfectTradesForProfile(profile: V2Profile) {
-  if (!profile.group_id) {
-    return [];
-  }
-
-  const { profiles, rows } = await fetchV2GroupAlbumRows(profile.group_id);
+  const { profiles, rows } = await fetchOpenPlatformData();
   const quantityMap = buildQuantityMap(rows);
 
   const otherProfiles = profiles.filter((item) => item.id !== profile.id);

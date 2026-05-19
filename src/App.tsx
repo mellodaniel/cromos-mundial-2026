@@ -35,13 +35,17 @@ import {
   type V2TradeRequest,
   type V2TradeStatus,
 } from "./lib/v2Trades";
+import {
+  fetchV2CollectorsStats,
+  type V2CollectorStats,
+} from "./lib/v2Collectors";
 
 type V2Section =
   | "home"
   | "album"
   | "suggestions"
   | "trade-requests"
-  | "group"
+  | "collectors"
   | "admin-users"
   | "admin-groups"
   | "admin-albums"
@@ -99,6 +103,147 @@ function getStickerStatus(quantity: number) {
   if (quantity === 0) return "Falta";
   if (quantity === 1) return "Tenho";
   return "Repetido";
+}
+
+function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
+  const [collectors, setCollectors] = useState<V2CollectorStats[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState("A carregar colecionadores...");
+  const [search, setSearch] = useState("");
+
+  const loadCollectors = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar colecionadores...");
+
+      const rows = await fetchV2CollectorsStats(ALL_STICKERS.length);
+
+      setCollectors(rows);
+      setStatus(`${rows.length} colecionador(es) ativo(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar os colecionadores.");
+      alert("Não foi possível carregar os colecionadores.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCollectors();
+  }, []);
+
+  const filteredCollectors = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) return collectors;
+
+    return collectors.filter((item) => {
+      return (
+        item.profile.display_name.toLowerCase().includes(normalizedSearch) ||
+        item.profile.username.toLowerCase().includes(normalizedSearch) ||
+        item.profile.role.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [collectors, search]);
+
+  const topCollector = collectors[0];
+  const totalDuplicates = collectors.reduce((total, item) => total + item.duplicates, 0);
+  const totalOwned = collectors.reduce((total, item) => total + item.owned, 0);
+
+  return (
+    <section className="card v2-content-card">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Plataforma</p>
+          <h2>Colecionadores</h2>
+          <p>{status}</p>
+        </div>
+
+        <button onClick={loadCollectors} disabled={isLoading}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <section className="v2-collectors-summary">
+        <div>
+          <span>Colecionadores ativos</span>
+          <strong>{collectors.length}</strong>
+        </div>
+
+        <div>
+          <span>Total de cromos registados</span>
+          <strong>{totalOwned}</strong>
+        </div>
+
+        <div>
+          <span>Total de repetidos</span>
+          <strong>{totalDuplicates}</strong>
+        </div>
+
+        <div className="highlight">
+          <span>Mais completo</span>
+          <strong>{topCollector ? `${topCollector.percentage}%` : "—"}</strong>
+        </div>
+      </section>
+
+      <div className="v2-collectors-search">
+        <label>
+          Pesquisar colecionador
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: Arthur, Diego, colecionador..."
+          />
+        </label>
+      </div>
+
+      <section className="v2-collectors-list">
+        {filteredCollectors.map((item, index) => {
+          const isCurrentUser = item.profile.id === currentProfile.id;
+
+          return (
+            <article
+              className={`v2-collector-card ${isCurrentUser ? "current" : ""}`}
+              key={item.profile.id}
+            >
+              <div className="v2-collector-rank">
+                <span>#{index + 1}</span>
+              </div>
+
+              <div className="v2-collector-info">
+                <div className="v2-collector-header">
+                  <div>
+                    <h3>
+                      {item.profile.display_name}
+                      {isCurrentUser ? " · Tu" : ""}
+                    </h3>
+                    <p>@{item.profile.username} · {getRoleLabel(item.profile.role)}</p>
+                  </div>
+
+                  <strong>{item.percentage}%</strong>
+                </div>
+
+                <div className="v2-collector-progress">
+                  <div style={{ width: `${item.percentage}%` }} />
+                </div>
+
+                <div className="v2-collector-stats">
+                  <span>{item.owned} tem</span>
+                  <span>{item.missing} faltam</span>
+                  <span>{item.duplicates} repetidos</span>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+
+        {filteredCollectors.length === 0 && !isLoading && (
+          <p className="empty-message">Nenhum colecionador encontrado.</p>
+        )}
+      </section>
+    </section>
+  );
 }
 
 function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
@@ -328,6 +473,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
   const handleCreatePerfectTrade = async (trade: V2PerfectTradeSuggestion) => {
     if (!profile.group_id) {
+      // Mantemos compatibilidade com a tabela atual. Depois podemos remover group_id totalmente.
       alert("Este utilizador não tem grupo associado.");
       return;
     }
@@ -1079,13 +1225,6 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
                   Username: <strong>{user.username}</strong>
                 </p>
 
-                <p>
-                  Grupo:{" "}
-                  <strong>
-                    {user.group_name ?? user.group_slug ?? "Sem grupo"}
-                  </strong>
-                </p>
-
                 {isCurrentUser && (
                   <p className="v2-self-warning">
                     Não podes alterar a tua própria role nem desativar o teu
@@ -1158,20 +1297,8 @@ function V2Dashboard({
       return <V2TradeRequestsPage profile={profile} />;
     }
 
-    if (section === "group") {
-      return (
-        <section className="card v2-content-card">
-          <p className="eyebrow dark">Grupo</p>
-          <h2>O meu grupo</h2>
-          <p>
-            Aqui vamos mostrar os membros do grupo, estatísticas e progresso das
-            cadernetas.
-          </p>
-          <p>
-            Grupo ID: <strong>{profile.group_id ?? "Sem grupo"}</strong>
-          </p>
-        </section>
-      );
+    if (section === "collectors") {
+      return <V2CollectorsPage currentProfile={profile} />;
     }
 
     if (section === "admin-users") {
@@ -1184,8 +1311,8 @@ function V2Dashboard({
           <p className="eyebrow dark">Administração</p>
           <h2>Gerir grupos</h2>
           <p>
-            Aqui vamos criar e gerir grupos, como Família Mello, equipa, escola
-            ou amigos.
+            Este módulo pode ficar reservado para uma fase futura, caso queiras
+            criar comunidades ou ligas privadas.
           </p>
         </section>
       );
@@ -1197,8 +1324,7 @@ function V2Dashboard({
           <p className="eyebrow dark">Administração</p>
           <h2>Ver cadernetas</h2>
           <p>
-            Aqui o admin poderá consultar cadernetas dos utilizadores do grupo
-            ou, no caso do super admin, de todos os grupos.
+            Aqui o admin poderá consultar cadernetas de outros utilizadores.
           </p>
         </section>
       );
@@ -1243,10 +1369,10 @@ function V2Dashboard({
           <p>Acompanhar propostas enviadas e recebidas.</p>
         </button>
 
-        <button className="card v2-menu-card" onClick={() => setSection("group")}>
+        <button className="card v2-menu-card" onClick={() => setSection("collectors")}>
           <span>04</span>
-          <h2>O meu grupo</h2>
-          <p>Ver membros, progresso e informação do grupo.</p>
+          <h2>Colecionadores</h2>
+          <p>Ver ranking geral, progresso e repetidos da plataforma.</p>
         </button>
 
         <button className="card v2-menu-card" onClick={() => setSection("stock")}>
@@ -1268,18 +1394,9 @@ function V2Dashboard({
 
             <button
               className="card v2-menu-card admin"
-              onClick={() => setSection("admin-groups")}
-            >
-              <span>A2</span>
-              <h2>Gerir grupos</h2>
-              <p>Criar grupos e organizar colecionadores.</p>
-            </button>
-
-            <button
-              className="card v2-menu-card admin"
               onClick={() => setSection("admin-albums")}
             >
-              <span>A3</span>
+              <span>A2</span>
               <h2>Ver cadernetas</h2>
               <p>Consultar cadernetas de outros utilizadores.</p>
             </button>
@@ -1294,9 +1411,9 @@ function V2Dashboard({
       <header className="hero public-hero">
         <div>
           <p className="eyebrow">Cromos Mundial 2026</p>
-          <h1>V2 Multiutilizador</h1>
+          <h1>V2 Plataforma Aberta</h1>
           <p className="subtitle">
-            Utilizadores, grupos, permissões e sugestões automáticas de trocas.
+            Colecionadores, cadernetas individuais e trocas automáticas entre todos.
           </p>
           <p className="cloud-status">
             🔐 Sessão ativa · {getRoleLabel(profile.role)}
@@ -1429,9 +1546,9 @@ function V2LoginPage() {
       <header className="hero public-hero">
         <div>
           <p className="eyebrow">Cromos Mundial 2026</p>
-          <h1>V2 Multiutilizador</h1>
+          <h1>V2 Plataforma Aberta</h1>
           <p className="subtitle">
-            Nova versão com utilizadores, grupos, permissões e cadernetas privadas.
+            Cria a tua conta, controla a tua caderneta e encontra trocas com outros colecionadores.
           </p>
           <p className="cloud-status">🔐 {status}</p>
         </div>
