@@ -51,12 +51,20 @@ import {
   fetchV2AdminCollectors,
   type V2AdminAlbumRow,
 } from "./lib/v2AdminAlbums";
+import {
+  buildV2ShareMessage,
+  downloadV2Image,
+  generateV2DuplicatesImage,
+  getV2DuplicateStickers,
+  type V2DuplicateSticker,
+} from "./lib/v2Share";
 
 type V2PanelKey =
   | "album"
   | "suggestions"
   | "trade-requests"
   | "collectors"
+  | "share"
   | "stock"
   | "admin";
 
@@ -409,6 +417,209 @@ function V2AdminAlbumsPanel() {
         {filteredStickers.length === 0 && (
           <p className="empty-message">
             Nenhum cromo encontrado com estes filtros.
+          </p>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function V2ShareDuplicatesPage({ profile }: { profile: V2Profile }) {
+  const [album, setAlbum] = useState<V2AlbumState>({});
+  const [duplicates, setDuplicates] = useState<V2DuplicateSticker[]>([]);
+  const [shareMessage, setShareMessage] = useState("");
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [status, setStatus] = useState("A carregar repetidos...");
+
+  const loadDuplicates = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar repetidos...");
+      setImageDataUrl(null);
+
+      const state = await fetchV2Album(profile.id);
+      const duplicateRows = getV2DuplicateStickers(ALL_STICKERS, state);
+      const message = buildV2ShareMessage(profile, duplicateRows);
+
+      setAlbum(state);
+      setDuplicates(duplicateRows);
+      setShareMessage(message);
+      setStatus(`${duplicateRows.length} cromo(s) repetido(s) diferente(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar os repetidos.");
+      alert("Não foi possível carregar os repetidos.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDuplicates();
+  }, [profile.id]);
+
+  const totalDuplicates = duplicates.reduce(
+    (total, item) => total + item.duplicates,
+    0
+  );
+
+  const summary = useMemo(() => calculateV2AlbumSummary(album), [album]);
+
+  const handleCopyMessage = async () => {
+    if (!shareMessage) {
+      alert("Ainda não existe mensagem para copiar.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareMessage);
+      alert("Mensagem copiada para a área de transferência.");
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível copiar a mensagem automaticamente.");
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (duplicates.length === 0) {
+      alert("Ainda não tens cromos repetidos para gerar imagem.");
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+      setStatus("A gerar imagem...");
+
+      const dataUrl = await generateV2DuplicatesImage(profile, duplicates);
+
+      setImageDataUrl(dataUrl);
+      setStatus("Imagem gerada. Podes descarregar ou partilhar.");
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível gerar a imagem.");
+      alert("Não foi possível gerar a imagem.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadImage = () => {
+    if (!imageDataUrl) {
+      alert("Gera a imagem primeiro.");
+      return;
+    }
+
+    const safeName = profile.username || "colecionador";
+    downloadV2Image(
+      imageDataUrl,
+      `repetidos-${safeName}-mundial-fifa-2026.png`
+    );
+  };
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Partilha</p>
+          <h2>Partilhar repetidos</h2>
+          <p>{status}</p>
+        </div>
+
+        <button onClick={loadDuplicates} disabled={isLoading || isGenerating}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <section className="v2-share-summary">
+        <div>
+          <span>Cromos diferentes</span>
+          <strong>{duplicates.length}</strong>
+        </div>
+
+        <div>
+          <span>Total de repetidos</span>
+          <strong>{totalDuplicates}</strong>
+        </div>
+
+        <div>
+          <span>Caderneta completa</span>
+          <strong>{summary.percentage}%</strong>
+        </div>
+      </section>
+
+      <section className="v2-share-actions">
+        <button onClick={handleCopyMessage} disabled={isLoading || !shareMessage}>
+          Copiar mensagem
+        </button>
+
+        <button
+          onClick={handleGenerateImage}
+          disabled={isLoading || isGenerating || duplicates.length === 0}
+        >
+          {isGenerating ? "A gerar..." : "Gerar imagem"}
+        </button>
+
+        <button onClick={handleDownloadImage} disabled={!imageDataUrl}>
+          Descarregar imagem
+        </button>
+      </section>
+
+      <section className="v2-share-grid">
+        <article className="v2-share-message-card">
+          <div>
+            <p className="eyebrow dark">WhatsApp / grupos</p>
+            <h3>Mensagem pronta para copiar</h3>
+          </div>
+
+          <textarea value={shareMessage} readOnly rows={12} />
+        </article>
+
+        <article className="v2-share-preview-card">
+          <div>
+            <p className="eyebrow dark">Imagem</p>
+            <h3>Pré-visualização</h3>
+          </div>
+
+          {imageDataUrl ? (
+            <img src={imageDataUrl} alt="Imagem dos cromos repetidos" />
+          ) : (
+            <div className="v2-share-placeholder">
+              <strong>Cromos & Trocas</strong>
+              <span>Mundial FIFA 2026</span>
+              <p>
+                Clica em “Gerar imagem” para criar uma imagem pronta para partilhar.
+              </p>
+            </div>
+          )}
+        </article>
+      </section>
+
+      <section className="v2-share-duplicates-list">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Lista</p>
+            <h3>Repetidos disponíveis</h3>
+          </div>
+          <span>{totalDuplicates}</span>
+        </div>
+
+        {duplicates.map((item) => (
+          <article className="v2-share-duplicate-row" key={item.sticker.id}>
+            <div>
+              <span>{item.sticker.label}</span>
+              <strong>{item.sticker.name}</strong>
+              <p>{item.sticker.section}</p>
+            </div>
+
+            <em>x{item.duplicates}</em>
+          </article>
+        ))}
+
+        {duplicates.length === 0 && !isLoading && (
+          <p className="empty-message">
+            Ainda não tens cromos repetidos para partilhar.
           </p>
         )}
       </section>
@@ -1780,7 +1991,10 @@ function V2Dashboard({
       <header className="hero public-hero">
         <div>
           <p className="eyebrow">Mundial FIFA 2026</p>
-          <h1>Cromos & Trocas</h1>
+          <h1>
+            Cromos & Trocas
+            <span className="hero-title-line">Mundial FIFA 2026</span>
+          </h1>
           <p className="subtitle">
             Controla a tua caderneta, vê os repetidos e encontra trocas com outros colecionadores.
           </p>
@@ -1891,6 +2105,21 @@ function V2Dashboard({
           {openPanel === "collectors" && (
             <div className="v2-accordion-content">
               <V2CollectorsPage currentProfile={profile} />
+            </div>
+          )}
+        </article>
+
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Partilhar repetidos"
+            subtitle="Gerar imagem e mensagem para enviar fora da app"
+            isOpen={openPanel === "share"}
+            onClick={() => togglePanel("share")}
+          />
+
+          {openPanel === "share" && (
+            <div className="v2-accordion-content">
+              <V2ShareDuplicatesPage profile={profile} />
             </div>
           )}
         </article>
@@ -2090,7 +2319,10 @@ function V2LoginPage() {
       <header className="hero public-hero">
         <div>
           <p className="eyebrow">Mundial FIFA 2026</p>
-          <h1>Cromos & Trocas</h1>
+          <h1>
+            Cromos & Trocas
+            <span className="hero-title-line">Mundial FIFA 2026</span>
+          </h1>
           <p className="subtitle">
             Controla a tua caderneta, vê os repetidos e encontra trocas com outros colecionadores.
           </p>
