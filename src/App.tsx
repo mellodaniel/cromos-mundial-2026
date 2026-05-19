@@ -54,9 +54,9 @@ type V2AlbumFilter = "all" | "owned" | "missing" | "duplicates";
 
 function getRoleLabel(role: V2Role) {
   if (role === "super_admin") return "Super Admin";
-  if (role === "group_admin") return "Admin";
   if (role === "collector") return "Colecionador";
-  return "Visualizador";
+  if (role === "viewer") return "Visualizador";
+  return "Colecionador";
 }
 
 function getStickerQuantity(album: V2AlbumState, stickerId: string) {
@@ -83,6 +83,7 @@ function calculateV2AlbumSummary(album: V2AlbumState) {
 
   ALL_STICKERS.forEach((sticker) => {
     const quantity = getStickerQuantity(album, sticker.id);
+
     if (quantity > 0) owned += 1;
     if (quantity === 0) missing += 1;
     if (quantity > 1) duplicates += quantity - 1;
@@ -120,6 +121,7 @@ function V2AccordionHeader({
         <strong>{title}</strong>
         {subtitle && <span>{subtitle}</span>}
       </div>
+
       <em>{isOpen ? "−" : "+"}</em>
     </button>
   );
@@ -135,7 +137,9 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
     try {
       setIsLoading(true);
       setStatus("A carregar colecionadores...");
+
       const rows = await fetchV2CollectorsStats(ALL_STICKERS.length);
+
       setCollectors(rows);
       setStatus(`${rows.length} colecionador(es) ativo(s).`);
     } catch (error) {
@@ -153,6 +157,7 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
 
   const filteredCollectors = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
+
     if (!normalizedSearch) return collectors;
 
     return collectors.filter((item) => {
@@ -165,7 +170,10 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
   }, [collectors, search]);
 
   const topCollector = collectors[0];
-  const totalDuplicates = collectors.reduce((total, item) => total + item.duplicates, 0);
+  const totalDuplicates = collectors.reduce(
+    (total, item) => total + item.duplicates,
+    0
+  );
   const totalOwned = collectors.reduce((total, item) => total + item.owned, 0);
 
   return (
@@ -176,6 +184,7 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
           <h2>Colecionadores</h2>
           <p>{status}</p>
         </div>
+
         <button onClick={loadCollectors} disabled={isLoading}>
           {isLoading ? "A carregar..." : "Atualizar"}
         </button>
@@ -186,14 +195,17 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
           <span>Colecionadores ativos</span>
           <strong>{collectors.length}</strong>
         </div>
+
         <div>
           <span>Total de cromos registados</span>
           <strong>{totalOwned}</strong>
         </div>
+
         <div>
           <span>Total de repetidos</span>
           <strong>{totalDuplicates}</strong>
         </div>
+
         <div className="highlight">
           <span>Mais completo</span>
           <strong>{topCollector ? `${topCollector.percentage}%` : "—"}</strong>
@@ -231,8 +243,11 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
                       {item.profile.display_name}
                       {isCurrentUser ? " · Tu" : ""}
                     </h3>
-                    <p>@{item.profile.username} · {getRoleLabel(item.profile.role)}</p>
+                    <p>
+                      @{item.profile.username} · {getRoleLabel(item.profile.role)}
+                    </p>
                   </div>
+
                   <strong>{item.percentage}%</strong>
                 </div>
 
@@ -294,8 +309,12 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
     return users.find((user) => user.id === profileId)?.display_name ?? "Utilizador";
   };
 
-  const sentRequests = requests.filter((request) => request.from_profile_id === profile.id);
-  const receivedRequests = requests.filter((request) => request.to_profile_id === profile.id);
+  const sentRequests = requests.filter(
+    (request) => request.from_profile_id === profile.id
+  );
+  const receivedRequests = requests.filter(
+    (request) => request.to_profile_id === profile.id
+  );
 
   const handleStatusUpdate = async (
     requestId: string,
@@ -310,7 +329,10 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
     }
   };
 
-  const renderRequestCard = (request: V2TradeRequest, type: "sent" | "received") => {
+  const renderRequestCard = (
+    request: V2TradeRequest,
+    type: "sent" | "received"
+  ) => {
     const wantedSticker = getStickerById(request.wanted_sticker_id);
     const offeredSticker = request.offered_sticker_id
       ? getStickerById(request.offered_sticker_id)
@@ -389,6 +411,7 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
           <h2>Propostas de troca</h2>
           <p>{status}</p>
         </div>
+
         <button onClick={loadTradeRequests} disabled={isLoading}>
           {isLoading ? "A carregar..." : "Atualizar"}
         </button>
@@ -399,6 +422,7 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
           <span>Recebidas</span>
           <strong>{receivedRequests.length}</strong>
         </div>
+
         <div>
           <span>Enviadas</span>
           <strong>{sentRequests.length}</strong>
@@ -416,6 +440,7 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
 
         <div className="v2-trade-requests-list">
           {receivedRequests.map((request) => renderRequestCard(request, "received"))}
+
           {receivedRequests.length === 0 && !isLoading && (
             <p className="empty-message">Ainda não recebeste propostas de troca.</p>
           )}
@@ -433,6 +458,7 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
 
         <div className="v2-trade-requests-list">
           {sentRequests.map((request) => renderRequestCard(request, "sent"))}
+
           {sentRequests.length === 0 && !isLoading && (
             <p className="empty-message">Ainda não enviaste propostas de troca.</p>
           )}
@@ -480,11 +506,6 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
   }, [profile.id]);
 
   const handleCreatePerfectTrade = async (trade: V2PerfectTradeSuggestion) => {
-    if (!profile.group_id) {
-      alert("Este utilizador não tem grupo associado.");
-      return;
-    }
-
     const confirmed = window.confirm(
       `Queres propor esta troca a ${trade.other_name}?`
     );
@@ -496,7 +517,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
       setStatus("A criar proposta de troca...");
 
       await createV2TradeRequest({
-        group_id: profile.group_id,
+        group_id: null,
         from_profile_id: profile.id,
         to_profile_id: trade.other_profile_id,
         wanted_sticker_id: trade.sticker_i_need_id,
@@ -517,10 +538,12 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
   const filteredSuggestions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
+
     if (!normalizedSearch) return suggestions;
 
     return suggestions.filter((suggestion) => {
       const sticker = getStickerById(suggestion.sticker_id);
+
       return (
         suggestion.offered_by_name.toLowerCase().includes(normalizedSearch) ||
         suggestion.offered_by_username.toLowerCase().includes(normalizedSearch) ||
@@ -533,6 +556,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
   const filteredPerfectTrades = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
+
     if (!normalizedSearch) return perfectTrades;
 
     return perfectTrades.filter((trade) => {
@@ -576,7 +600,9 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
         <div>
           <p className="eyebrow dark">Trocas</p>
           <h2>Sugestões de troca</h2>
-          <p>{profile.display_name} · {status}</p>
+          <p>
+            {profile.display_name} · {status}
+          </p>
         </div>
 
         <button onClick={loadSuggestions} disabled={isLoading || isCreatingTrade}>
@@ -589,10 +615,12 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
           <span>Trocas perfeitas</span>
           <strong>{perfectTrades.length}</strong>
         </div>
+
         <div>
           <span>Sugestões simples</span>
           <strong>{suggestions.length}</strong>
         </div>
+
         <div>
           <span>Pessoas que podem ajudar</span>
           <strong>{suggestionsByUser.length}</strong>
@@ -650,7 +678,9 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
                   <div>
                     <span>{trade.other_name} recebe</span>
-                    <strong>{stickerTheyNeed?.label ?? trade.sticker_they_need_id}</strong>
+                    <strong>
+                      {stickerTheyNeed?.label ?? trade.sticker_they_need_id}
+                    </strong>
                     <p>{stickerTheyNeed?.name ?? "Cromo"}</p>
                     <small>
                       {trade.my_available_duplicates} disponível
@@ -696,6 +726,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
                   <h3>{group.name}</h3>
                   <p>@{group.username}</p>
                 </div>
+
                 <strong>{group.rows.length} cromo(s)</strong>
               </div>
 
@@ -709,10 +740,12 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
                       key={`${suggestion.offered_by_profile_id}-${suggestion.sticker_id}`}
                     >
                       <span>{sticker?.label ?? suggestion.sticker_id}</span>
+
                       <div>
                         <strong>{sticker?.name ?? "Cromo"}</strong>
                         <p>{sticker?.section ?? "Secção desconhecida"}</p>
                       </div>
+
                       <small>
                         {suggestion.available_duplicates} disponível
                         {suggestion.available_duplicates > 1 ? "is" : ""}
@@ -753,7 +786,9 @@ function V2AlbumPage({
     try {
       setIsLoading(true);
       setStatus("A carregar caderneta...");
+
       const state = await fetchV2Album(profile.id);
+
       setAlbum(state);
       setStatus("Caderneta sincronizada.");
     } catch (error) {
@@ -789,6 +824,7 @@ function V2AlbumPage({
 
     return ALL_STICKERS.filter((sticker) => {
       const quantity = getStickerQuantity(album, sticker.id);
+
       const matchesSection =
         selectedSection === "Todas" || sticker.section === selectedSection;
 
@@ -812,14 +848,26 @@ function V2AlbumPage({
   const updateQuantity = async (sticker: Sticker, change: number) => {
     const currentQuantity = getStickerQuantity(album, sticker.id);
     const nextQuantity = Math.max(0, currentQuantity + change);
+
     if (nextQuantity === currentQuantity) return;
 
     const previousAlbum = album;
-    setAlbum({ ...album, [sticker.id]: nextQuantity });
+
+    setAlbum({
+      ...album,
+      [sticker.id]: nextQuantity,
+    });
 
     try {
       setStatus("A guardar alteração...");
-      await incrementV2StickerQuantity(profile.id, sticker.id, currentQuantity, change);
+
+      await incrementV2StickerQuantity(
+        profile.id,
+        sticker.id,
+        currentQuantity,
+        change
+      );
+
       setStatus("Caderneta sincronizada.");
       onAlbumChanged();
     } catch (error) {
@@ -834,11 +882,16 @@ function V2AlbumPage({
     const nextQuantity = Math.max(0, Number(quantityText) || 0);
     const previousAlbum = album;
 
-    setAlbum({ ...album, [sticker.id]: nextQuantity });
+    setAlbum({
+      ...album,
+      [sticker.id]: nextQuantity,
+    });
 
     try {
       setStatus("A guardar alteração...");
+
       await upsertV2StickerQuantity(profile.id, sticker.id, nextQuantity);
+
       setStatus("Caderneta sincronizada.");
       onAlbumChanged();
     } catch (error) {
@@ -855,7 +908,9 @@ function V2AlbumPage({
         <div>
           <p className="eyebrow dark">Caderneta</p>
           <h2>A minha caderneta</h2>
-          <p>{profile.display_name} · {status}</p>
+          <p>
+            {profile.display_name} · {status}
+          </p>
         </div>
 
         <button onClick={loadAlbum} disabled={isLoading}>
@@ -868,18 +923,22 @@ function V2AlbumPage({
           <span>Total</span>
           <strong>{summary.total}</strong>
         </div>
+
         <div>
           <span>Já tenho</span>
           <strong>{summary.owned}</strong>
         </div>
+
         <div>
           <span>Faltam</span>
           <strong>{summary.missing}</strong>
         </div>
+
         <div>
           <span>Repetidos</span>
           <strong>{summary.duplicates}</strong>
         </div>
+
         <div className="highlight">
           <span>Completo</span>
           <strong>{summary.percentage}%</strong>
@@ -915,15 +974,27 @@ function V2AlbumPage({
         </label>
 
         <div className="v2-filter-buttons">
-          <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
+          <button
+            className={filter === "all" ? "active" : ""}
+            onClick={() => setFilter("all")}
+          >
             Todos
           </button>
-          <button className={filter === "owned" ? "active" : ""} onClick={() => setFilter("owned")}>
+
+          <button
+            className={filter === "owned" ? "active" : ""}
+            onClick={() => setFilter("owned")}
+          >
             Tenho
           </button>
-          <button className={filter === "missing" ? "active" : ""} onClick={() => setFilter("missing")}>
+
+          <button
+            className={filter === "missing" ? "active" : ""}
+            onClick={() => setFilter("missing")}
+          >
             Faltam
           </button>
+
           <button
             className={filter === "duplicates" ? "active" : ""}
             onClick={() => setFilter("duplicates")}
@@ -960,11 +1031,15 @@ function V2AlbumPage({
 
                 <div className="v2-quantity-controls">
                   <button onClick={() => updateQuantity(sticker, -1)}>-</button>
+
                   <input
                     value={quantity}
                     inputMode="numeric"
-                    onChange={(event) => setDirectQuantity(sticker, event.target.value)}
+                    onChange={(event) =>
+                      setDirectQuantity(sticker, event.target.value)
+                    }
                   />
+
                   <button onClick={() => updateQuantity(sticker, 1)}>+</button>
                 </div>
               </div>
@@ -997,7 +1072,9 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
     try {
       setIsLoadingUsers(true);
       setStatus("A carregar utilizadores...");
+
       const rows = await fetchV2Users();
+
       setUsers(rows);
       setStatus(`${rows.length} utilizador(es) encontrado(s).`);
     } catch (error) {
@@ -1042,7 +1119,9 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
       setNewDisplayName("");
       setNewPassword("");
       setNewRole("collector");
+
       await loadUsers();
+
       alert("Utilizador criado com sucesso.");
     } catch (error) {
       console.error(error);
@@ -1138,7 +1217,6 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
             >
               <option value="collector">Colecionador</option>
               <option value="viewer">Visualizador</option>
-              <option value="group_admin">Admin</option>
               {currentProfile.role === "super_admin" && (
                 <option value="super_admin">Super Admin</option>
               )}
@@ -1186,7 +1264,6 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
                     }
                   >
                     <option value="super_admin">Super Admin</option>
-                    <option value="group_admin">Admin</option>
                     <option value="collector">Colecionador</option>
                     <option value="viewer">Visualizador</option>
                   </select>
@@ -1275,18 +1352,22 @@ function V2Dashboard({
           <span>Caderneta</span>
           <strong>{profile.display_name}</strong>
         </div>
+
         <div>
           <span>Já tenho</span>
           <strong>{summary.owned}</strong>
         </div>
+
         <div>
           <span>Faltam</span>
           <strong>{summary.missing}</strong>
         </div>
+
         <div>
           <span>Repetidos</span>
           <strong>{summary.duplicates}</strong>
         </div>
+
         <div className="highlight">
           <span>Completo</span>
           <strong>{summary.percentage}%</strong>
@@ -1296,7 +1377,9 @@ function V2Dashboard({
       <section className="v2-main-progress card">
         <div className="v2-progress-header">
           <strong>Progresso da tua caderneta</strong>
-          <span>{summary.owned} de {summary.total}</span>
+          <span>
+            {summary.owned} de {summary.total}
+          </span>
         </div>
 
         <div className="v2-progress-bar">
@@ -1312,6 +1395,7 @@ function V2Dashboard({
             isOpen={openPanel === "album"}
             onClick={() => togglePanel("album")}
           />
+
           {openPanel === "album" && (
             <div className="v2-accordion-content">
               <V2AlbumPage profile={profile} onAlbumChanged={loadSummary} />
@@ -1326,6 +1410,7 @@ function V2Dashboard({
             isOpen={openPanel === "suggestions"}
             onClick={() => togglePanel("suggestions")}
           />
+
           {openPanel === "suggestions" && (
             <div className="v2-accordion-content">
               <V2SuggestionsPage profile={profile} />
@@ -1340,6 +1425,7 @@ function V2Dashboard({
             isOpen={openPanel === "trade-requests"}
             onClick={() => togglePanel("trade-requests")}
           />
+
           {openPanel === "trade-requests" && (
             <div className="v2-accordion-content">
               <V2TradeRequestsPage profile={profile} />
@@ -1354,6 +1440,7 @@ function V2Dashboard({
             isOpen={openPanel === "collectors"}
             onClick={() => togglePanel("collectors")}
           />
+
           {openPanel === "collectors" && (
             <div className="v2-accordion-content">
               <V2CollectorsPage currentProfile={profile} />
@@ -1368,13 +1455,15 @@ function V2Dashboard({
             isOpen={openPanel === "stock"}
             onClick={() => togglePanel("stock")}
           />
+
           {openPanel === "stock" && (
             <div className="v2-accordion-content">
               <section className="v2-inner-section">
                 <p className="eyebrow dark">Stock</p>
                 <h2>Stock de saquetas</h2>
                 <p>
-                  Aqui vamos ligar o módulo já existente de disponibilidade online das saquetas.
+                  Aqui vamos ligar o módulo já existente de disponibilidade online das
+                  saquetas.
                 </p>
               </section>
             </div>
@@ -1389,6 +1478,7 @@ function V2Dashboard({
               isOpen={openPanel === "admin"}
               onClick={() => togglePanel("admin")}
             />
+
             {openPanel === "admin" && (
               <div className="v2-accordion-content">
                 <div className="v2-admin-tabs">
@@ -1477,6 +1567,7 @@ function V2LoginPage() {
     try {
       setIsSigningIn(true);
       setStatus("A iniciar sessão...");
+
       await v2SignIn(username, password);
       await loadProfile();
     } catch (error) {
@@ -1568,7 +1659,8 @@ function V2LoginPage() {
           <p className="eyebrow">Cromos Mundial 2026</p>
           <h1>V2 Plataforma Aberta</h1>
           <p className="subtitle">
-            Cria a tua conta, controla a tua caderneta e encontra trocas com outros colecionadores.
+            Cria a tua conta, controla a tua caderneta e encontra trocas com outros
+            colecionadores.
           </p>
           <p className="cloud-status">🔐 {status}</p>
         </div>
@@ -1628,7 +1720,8 @@ function V2LoginPage() {
           <>
             <h2>Criar conta</h2>
             <p>
-              Cria a tua conta de colecionador. Depois podes começar a registar a tua caderneta.
+              Cria a tua conta de colecionador. Depois podes começar a registar a tua
+              caderneta.
             </p>
 
             <form className="v2-login-form" onSubmit={handlePublicSignup}>

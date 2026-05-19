@@ -8,7 +8,7 @@ export type V2TradeStatus =
   | "cancelled";
 
 export type CreateV2TradeRequestPayload = {
-  group_id: string;
+  group_id?: string | null;
   from_profile_id: string;
   to_profile_id: string;
   wanted_sticker_id: string;
@@ -33,7 +33,7 @@ export async function createV2TradeRequest(payload: CreateV2TradeRequestPayload)
   const { data, error } = await supabase
     .from("v2_trade_requests")
     .insert({
-      group_id: payload.group_id,
+      group_id: payload.group_id ?? null,
       from_profile_id: payload.from_profile_id,
       to_profile_id: payload.to_profile_id,
       wanted_sticker_id: payload.wanted_sticker_id,
