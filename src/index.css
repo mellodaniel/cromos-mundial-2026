@@ -1742,3 +1742,141 @@ textarea:focus {
     width: 100%;
   }
 }
+/* =========================
+   V2 Admin Albums
+   ========================= */
+
+   .v2-admin-album-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  
+  .v2-admin-album-selector label {
+    display: grid;
+    gap: 8px;
+    color: #344054;
+    font-weight: 900;
+  }
+  
+  .v2-admin-album-owner {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    padding: 18px;
+    margin-bottom: 18px;
+    border-radius: 20px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .v2-admin-album-owner span {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 950;
+  }
+  
+  .v2-admin-album-owner strong {
+    display: block;
+    color: var(--blue);
+    font-size: 1.45rem;
+    line-height: 1.1;
+  }
+  
+  .v2-admin-album-owner p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-weight: 800;
+  }
+  
+  .v2-admin-album-percentage {
+    text-align: right;
+  }
+  
+  .v2-admin-album-percentage strong {
+    font-size: 2.2rem;
+  }
+  
+  .v2-filter-buttons.admin-album {
+    margin: 18px 0;
+  }
+  
+  .v2-admin-album-list {
+    display: grid;
+    gap: 10px;
+  }
+  
+  .v2-admin-album-sticker {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: center;
+    padding: 14px;
+    border-radius: 18px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .v2-admin-album-sticker span {
+    display: inline-flex;
+    margin-bottom: 8px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: #e8f1fb;
+    color: var(--blue);
+    font-size: 0.78rem;
+    font-weight: 950;
+  }
+  
+  .v2-admin-album-sticker strong {
+    display: block;
+    color: var(--blue);
+  }
+  
+  .v2-admin-album-sticker p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-weight: 750;
+  }
+  
+  .v2-admin-album-sticker > div:last-child {
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+    min-width: 110px;
+  }
+  
+  .v2-admin-album-sticker em {
+    font-style: normal;
+  }
+  
+  .v2-admin-album-sticker small {
+    color: var(--muted);
+    font-weight: 800;
+  }
+  
+  @media (max-width: 760px) {
+    .v2-admin-album-selector {
+      grid-template-columns: 1fr;
+    }
+  
+    .v2-admin-album-owner,
+    .v2-admin-album-sticker {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  
+    .v2-admin-album-percentage {
+      text-align: left;
+    }
+  
+    .v2-admin-album-sticker > div:last-child {
+      justify-items: start;
+    }
+  }

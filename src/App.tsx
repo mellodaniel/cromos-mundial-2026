@@ -46,6 +46,11 @@ import {
   type V2StockItem,
   type V2StockStatus,
 } from "./lib/v2Stock";
+import {
+  fetchV2AdminAlbum,
+  fetchV2AdminCollectors,
+  type V2AdminAlbumRow,
+} from "./lib/v2AdminAlbums";
 
 type V2PanelKey =
   | "album"
@@ -125,6 +130,16 @@ function getStickerStatus(quantity: number) {
   return "Repetido";
 }
 
+function buildAlbumStateFromRows(rows: V2AdminAlbumRow[]) {
+  const album: V2AlbumState = {};
+
+  rows.forEach((row) => {
+    album[row.sticker_id] = row.quantity;
+  });
+
+  return album;
+}
+
 function V2AccordionHeader({
   title,
   subtitle,
@@ -145,6 +160,259 @@ function V2AccordionHeader({
 
       <em>{isOpen ? "−" : "+"}</em>
     </button>
+  );
+}
+
+function V2AdminAlbumsPanel() {
+  const [collectors, setCollectors] = useState<V2Profile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [albumRows, setAlbumRows] = useState<V2AdminAlbumRow[]>([]);
+  const [isLoadingCollectors, setIsLoadingCollectors] = useState(true);
+  const [isLoadingAlbum, setIsLoadingAlbum] = useState(false);
+  const [status, setStatus] = useState("A carregar colecionadores...");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<V2AlbumFilter>("all");
+
+  const loadCollectors = async () => {
+    try {
+      setIsLoadingCollectors(true);
+      setStatus("A carregar colecionadores...");
+
+      const rows = await fetchV2AdminCollectors();
+
+      setCollectors(rows);
+      setStatus(`${rows.length} colecionador(es) ativo(s).`);
+
+      if (!selectedProfileId && rows.length > 0) {
+        setSelectedProfileId(rows[0].id);
+      }
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar os colecionadores.");
+      alert("Não foi possível carregar os colecionadores.");
+    } finally {
+      setIsLoadingCollectors(false);
+    }
+  };
+
+  const loadAlbum = async (profileId: string) => {
+    if (!profileId) return;
+
+    try {
+      setIsLoadingAlbum(true);
+      setStatus("A carregar caderneta...");
+
+      const rows = await fetchV2AdminAlbum(profileId);
+
+      setAlbumRows(rows);
+      setStatus("Caderneta carregada.");
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar a caderneta.");
+      alert("Não foi possível carregar a caderneta.");
+    } finally {
+      setIsLoadingAlbum(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCollectors();
+  }, []);
+
+  useEffect(() => {
+    if (selectedProfileId) {
+      loadAlbum(selectedProfileId);
+    }
+  }, [selectedProfileId]);
+
+  const selectedCollector = collectors.find(
+    (collector) => collector.id === selectedProfileId
+  );
+
+  const album = useMemo(() => buildAlbumStateFromRows(albumRows), [albumRows]);
+  const summary = useMemo(() => calculateV2AlbumSummary(album), [album]);
+
+  const filteredStickers = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return ALL_STICKERS.filter((sticker) => {
+      const quantity = getStickerQuantity(album, sticker.id);
+
+      const matchesSearch =
+        !normalizedSearch ||
+        sticker.label.toLowerCase().includes(normalizedSearch) ||
+        sticker.name.toLowerCase().includes(normalizedSearch) ||
+        sticker.section.toLowerCase().includes(normalizedSearch) ||
+        sticker.code.toLowerCase().includes(normalizedSearch);
+
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "owned" && quantity > 0) ||
+        (filter === "missing" && quantity === 0) ||
+        (filter === "duplicates" && quantity > 1);
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [album, search, filter]);
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Administração</p>
+          <h2>Ver cadernetas</h2>
+          <p>{status}</p>
+        </div>
+
+        <button
+          onClick={() => selectedProfileId && loadAlbum(selectedProfileId)}
+          disabled={isLoadingCollectors || isLoadingAlbum || !selectedProfileId}
+        >
+          {isLoadingAlbum ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <div className="v2-admin-album-selector">
+        <label>
+          Colecionador
+          <select
+            value={selectedProfileId}
+            onChange={(event) => setSelectedProfileId(event.target.value)}
+          >
+            {collectors.map((collector) => (
+              <option key={collector.id} value={collector.id}>
+                {collector.display_name} (@{collector.username})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Pesquisar cromo
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: ARG 10, Brasil, Messi..."
+          />
+        </label>
+      </div>
+
+      {selectedCollector && (
+        <section className="v2-admin-album-owner">
+          <div>
+            <span>Caderneta de</span>
+            <strong>{selectedCollector.display_name}</strong>
+            <p>
+              @{selectedCollector.username} · {getRoleLabel(selectedCollector.role)}
+            </p>
+          </div>
+
+          <div className="v2-admin-album-percentage">
+            <strong>{summary.percentage}%</strong>
+            <span>completa</span>
+          </div>
+        </section>
+      )}
+
+      <section className="v2-album-summary compact">
+        <div>
+          <span>Total</span>
+          <strong>{summary.total}</strong>
+        </div>
+
+        <div>
+          <span>Já tem</span>
+          <strong>{summary.owned}</strong>
+        </div>
+
+        <div>
+          <span>Faltam</span>
+          <strong>{summary.missing}</strong>
+        </div>
+
+        <div>
+          <span>Repetidos</span>
+          <strong>{summary.duplicates}</strong>
+        </div>
+
+        <div className="highlight">
+          <span>Completo</span>
+          <strong>{summary.percentage}%</strong>
+        </div>
+      </section>
+
+      <div className="v2-progress-bar">
+        <div style={{ width: `${summary.percentage}%` }} />
+      </div>
+
+      <div className="v2-filter-buttons admin-album">
+        <button
+          className={filter === "all" ? "active" : ""}
+          onClick={() => setFilter("all")}
+        >
+          Todos
+        </button>
+
+        <button
+          className={filter === "owned" ? "active" : ""}
+          onClick={() => setFilter("owned")}
+        >
+          Tem
+        </button>
+
+        <button
+          className={filter === "missing" ? "active" : ""}
+          onClick={() => setFilter("missing")}
+        >
+          Faltam
+        </button>
+
+        <button
+          className={filter === "duplicates" ? "active" : ""}
+          onClick={() => setFilter("duplicates")}
+        >
+          Repetidos
+        </button>
+      </div>
+
+      <section className="v2-admin-album-list">
+        {filteredStickers.map((sticker) => {
+          const quantity = getStickerQuantity(album, sticker.id);
+          const statusLabel = getStickerStatus(quantity);
+          const duplicates = quantity > 1 ? quantity - 1 : 0;
+
+          return (
+            <article className="v2-admin-album-sticker" key={sticker.id}>
+              <div>
+                <span>{sticker.label}</span>
+                <strong>{sticker.name}</strong>
+                <p>{sticker.section}</p>
+              </div>
+
+              <div>
+                <em className={`v2-sticker-status ${statusLabel.toLowerCase()}`}>
+                  {statusLabel}
+                </em>
+
+                <strong>{quantity}</strong>
+
+                {duplicates > 0 && (
+                  <small>
+                    {duplicates} repetido{duplicates > 1 ? "s" : ""}
+                  </small>
+                )}
+              </div>
+            </article>
+          );
+        })}
+
+        {filteredStickers.length === 0 && (
+          <p className="empty-message">
+            Nenhum cromo encontrado com estes filtros.
+          </p>
+        )}
+      </section>
+    </section>
   );
 }
 
@@ -278,13 +546,11 @@ function V2StockPage() {
               </p>
 
               <p>
-                Última verificação:{" "}
-                <strong>{formatStockDate(item.last_checked_at)}</strong>
+                Última verificação: <strong>{formatStockDate(item.last_checked_at)}</strong>
               </p>
 
               <p>
-                Último sucesso:{" "}
-                <strong>{formatStockDate(item.last_success_at)}</strong>
+                Último sucesso: <strong>{formatStockDate(item.last_success_at)}</strong>
               </p>
 
               {item.notes && (
@@ -1674,14 +1940,7 @@ function V2Dashboard({
                 {adminPanel === "users" ? (
                   <V2AdminUsers currentProfile={profile} />
                 ) : (
-                  <section className="v2-inner-section">
-                    <p className="eyebrow dark">Administração</p>
-                    <h2>Ver cadernetas</h2>
-                    <p>
-                      Este painel fica reservado para a próxima melhoria: escolher um
-                      colecionador e consultar a respetiva caderneta.
-                    </p>
-                  </section>
+                  <V2AdminAlbumsPanel />
                 )}
               </div>
             )}
