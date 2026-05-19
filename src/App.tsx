@@ -1139,16 +1139,29 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
       setIsLoading(true);
       setStatus("A carregar sugestões...");
 
-      const [simpleRows, perfectRows] = await Promise.all([
+      const [simpleRows, perfectRows, myAlbum] = await Promise.all([
         fetchV2SuggestionsForProfile(profile),
         fetchV2PerfectTradesForProfile(profile),
+        fetchV2Album(profile.id),
       ]);
 
-      setSuggestions(simpleRows);
-      setPerfectTrades(perfectRows);
+      const safeSimpleRows = simpleRows.filter((suggestion) => {
+        const myQuantity = myAlbum[suggestion.sticker_id] ?? 0;
+        return myQuantity === 0;
+      });
+
+      const safePerfectRows = perfectRows.filter((trade) => {
+        const stickerINeedQuantity = myAlbum[trade.sticker_i_need_id] ?? 0;
+        const stickerIOfferQuantity = myAlbum[trade.sticker_they_need_id] ?? 0;
+
+        return stickerINeedQuantity === 0 && stickerIOfferQuantity > 1;
+      });
+
+      setSuggestions(safeSimpleRows);
+      setPerfectTrades(safePerfectRows);
 
       setStatus(
-        `${perfectRows.length} troca(s) perfeita(s) e ${simpleRows.length} sugestão(ões) simples.`
+        `${safePerfectRows.length} troca(s) perfeita(s) e ${safeSimpleRows.length} sugestão(ões) simples.`
       );
     } catch (error) {
       console.error(error);
