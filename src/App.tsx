@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import "./index.css";
+import { ALL_STICKERS, type Sticker } from "./data/stickers";
 import {
   canViewAdmin,
   getV2CurrentProfile,
@@ -15,6 +16,12 @@ import {
   updateV2UserRole,
   type V2UserRow,
 } from "./lib/v2Admin";
+import {
+  fetchV2Album,
+  incrementV2StickerQuantity,
+  upsertV2StickerQuantity,
+  type V2AlbumState,
+} from "./lib/v2Album";
 
 type V2Section =
   | "home"
@@ -26,11 +33,333 @@ type V2Section =
   | "admin-albums"
   | "stock";
 
+type V2AlbumFilter = "all" | "owned" | "missing" | "duplicates";
+
 function getRoleLabel(role: V2Role) {
   if (role === "super_admin") return "Super Admin";
   if (role === "group_admin") return "Admin do Grupo";
   if (role === "collector") return "Colecionador";
   return "Visualizador";
+}
+
+function getStickerQuantity(album: V2AlbumState, stickerId: string) {
+  return album[stickerId] ?? 0;
+}
+
+function calculateV2AlbumSummary(album: V2AlbumState) {
+  const total = ALL_STICKERS.length;
+  let owned = 0;
+  let missing = 0;
+  let duplicates = 0;
+
+  ALL_STICKERS.forEach((sticker) => {
+    const quantity = getStickerQuantity(album, sticker.id);
+
+    if (quantity > 0) owned += 1;
+    if (quantity === 0) missing += 1;
+    if (quantity > 1) duplicates += quantity - 1;
+  });
+
+  return {
+    total,
+    owned,
+    missing,
+    duplicates,
+    percentage: total > 0 ? Math.round((owned / total) * 100) : 0,
+  };
+}
+
+function getStickerStatus(quantity: number) {
+  if (quantity === 0) return "Falta";
+  if (quantity === 1) return "Tenho";
+  return "Repetido";
+}
+
+function V2AlbumPage({ profile }: { profile: V2Profile }) {
+  const [album, setAlbum] = useState<V2AlbumState>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState("A carregar caderneta...");
+  const [selectedSection, setSelectedSection] = useState("Todas");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<V2AlbumFilter>("all");
+
+  const loadAlbum = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar caderneta...");
+
+      const state = await fetchV2Album(profile.id);
+
+      setAlbum(state);
+      setStatus("Caderneta sincronizada.");
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar a caderneta.");
+      alert("Não foi possível carregar a caderneta.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAlbum();
+  }, [profile.id]);
+
+  const summary = useMemo(() => calculateV2AlbumSummary(album), [album]);
+
+  const sections = useMemo(() => {
+    const uniqueSections = Array.from(
+      new Set(ALL_STICKERS.map((sticker) => sticker.section))
+    );
+
+    return [
+      "Todas",
+      ...uniqueSections.sort((a, b) =>
+        a.localeCompare(b, "pt", { sensitivity: "base" })
+      ),
+    ];
+  }, []);
+
+  const filteredStickers = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return ALL_STICKERS.filter((sticker) => {
+      const quantity = getStickerQuantity(album, sticker.id);
+
+      const matchesSection =
+        selectedSection === "Todas" || sticker.section === selectedSection;
+
+      const matchesSearch =
+        !normalizedSearch ||
+        sticker.label.toLowerCase().includes(normalizedSearch) ||
+        sticker.name.toLowerCase().includes(normalizedSearch) ||
+        sticker.section.toLowerCase().includes(normalizedSearch) ||
+        sticker.code.toLowerCase().includes(normalizedSearch);
+
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "owned" && quantity > 0) ||
+        (filter === "missing" && quantity === 0) ||
+        (filter === "duplicates" && quantity > 1);
+
+      return matchesSection && matchesSearch && matchesFilter;
+    });
+  }, [album, selectedSection, search, filter]);
+
+  const updateQuantity = async (sticker: Sticker, change: number) => {
+    const currentQuantity = getStickerQuantity(album, sticker.id);
+    const nextQuantity = Math.max(0, currentQuantity + change);
+
+    if (nextQuantity === currentQuantity) return;
+
+    const previousAlbum = album;
+
+    setAlbum({
+      ...album,
+      [sticker.id]: nextQuantity,
+    });
+
+    try {
+      setStatus("A guardar alteração...");
+
+      await incrementV2StickerQuantity(
+        profile.id,
+        sticker.id,
+        currentQuantity,
+        change
+      );
+
+      setStatus("Caderneta sincronizada.");
+    } catch (error) {
+      console.error(error);
+      setAlbum(previousAlbum);
+      setStatus("Erro ao guardar alteração.");
+      alert("Não foi possível guardar esta alteração.");
+    }
+  };
+
+  const setDirectQuantity = async (sticker: Sticker, quantityText: string) => {
+    const nextQuantity = Math.max(0, Number(quantityText) || 0);
+    const previousAlbum = album;
+
+    setAlbum({
+      ...album,
+      [sticker.id]: nextQuantity,
+    });
+
+    try {
+      setStatus("A guardar alteração...");
+
+      await upsertV2StickerQuantity(profile.id, sticker.id, nextQuantity);
+
+      setStatus("Caderneta sincronizada.");
+    } catch (error) {
+      console.error(error);
+      setAlbum(previousAlbum);
+      setStatus("Erro ao guardar alteração.");
+      alert("Não foi possível guardar esta alteração.");
+    }
+  };
+
+  return (
+    <section className="v2-album-page">
+      <section className="card v2-content-card">
+        <div className="v2-section-header">
+          <div>
+            <p className="eyebrow dark">Caderneta</p>
+            <h2>A minha caderneta</h2>
+            <p>
+              {profile.display_name} · {status}
+            </p>
+          </div>
+
+          <button onClick={loadAlbum} disabled={isLoading}>
+            {isLoading ? "A carregar..." : "Atualizar"}
+          </button>
+        </div>
+
+        <section className="v2-album-summary">
+          <div>
+            <span>Total</span>
+            <strong>{summary.total}</strong>
+          </div>
+
+          <div>
+            <span>Já tenho</span>
+            <strong>{summary.owned}</strong>
+          </div>
+
+          <div>
+            <span>Faltam</span>
+            <strong>{summary.missing}</strong>
+          </div>
+
+          <div>
+            <span>Repetidos</span>
+            <strong>{summary.duplicates}</strong>
+          </div>
+
+          <div className="highlight">
+            <span>Completo</span>
+            <strong>{summary.percentage}%</strong>
+          </div>
+        </section>
+
+        <div className="v2-progress-bar">
+          <div style={{ width: `${summary.percentage}%` }} />
+        </div>
+      </section>
+
+      <section className="card v2-content-card">
+        <div className="v2-album-controls">
+          <label>
+            Secção / País
+            <select
+              value={selectedSection}
+              onChange={(event) => setSelectedSection(event.target.value)}
+            >
+              {sections.map((section) => (
+                <option key={section} value={section}>
+                  {section}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Pesquisar
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Ex: ARG 17, Messi, Brasil, FWC..."
+            />
+          </label>
+
+          <div className="v2-filter-buttons">
+            <button
+              className={filter === "all" ? "active" : ""}
+              onClick={() => setFilter("all")}
+            >
+              Todos
+            </button>
+
+            <button
+              className={filter === "owned" ? "active" : ""}
+              onClick={() => setFilter("owned")}
+            >
+              Tenho
+            </button>
+
+            <button
+              className={filter === "missing" ? "active" : ""}
+              onClick={() => setFilter("missing")}
+            >
+              Faltam
+            </button>
+
+            <button
+              className={filter === "duplicates" ? "active" : ""}
+              onClick={() => setFilter("duplicates")}
+            >
+              Repetidos
+            </button>
+          </div>
+        </div>
+
+        <section className="v2-stickers-list">
+          {filteredStickers.map((sticker) => {
+            const quantity = getStickerQuantity(album, sticker.id);
+            const statusLabel = getStickerStatus(quantity);
+            const duplicates = quantity > 1 ? quantity - 1 : 0;
+
+            return (
+              <article className="card v2-sticker-card" key={sticker.id}>
+                <div>
+                  <span className="v2-sticker-label">{sticker.label}</span>
+                  <h3>{sticker.name}</h3>
+                  <p>{sticker.section}</p>
+                </div>
+
+                <div className="v2-sticker-actions">
+                  <span
+                    className={`v2-sticker-status ${statusLabel.toLowerCase()}`}
+                  >
+                    {statusLabel}
+                  </span>
+
+                  {duplicates > 0 && (
+                    <small>
+                      {duplicates} repetido{duplicates > 1 ? "s" : ""}
+                    </small>
+                  )}
+
+                  <div className="v2-quantity-controls">
+                    <button onClick={() => updateQuantity(sticker, -1)}>-</button>
+
+                    <input
+                      value={quantity}
+                      inputMode="numeric"
+                      onChange={(event) =>
+                        setDirectQuantity(sticker, event.target.value)
+                      }
+                    />
+
+                    <button onClick={() => updateQuantity(sticker, 1)}>+</button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+
+          {filteredStickers.length === 0 && (
+            <p className="empty-message">
+              Nenhum cromo encontrado com estes filtros.
+            </p>
+          )}
+        </section>
+      </section>
+    </section>
+  );
 }
 
 function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
@@ -295,16 +624,7 @@ function V2Dashboard({
 
   const renderContent = () => {
     if (section === "album") {
-      return (
-        <section className="card v2-content-card">
-          <p className="eyebrow dark">Caderneta</p>
-          <h2>A minha caderneta</h2>
-          <p>
-            Aqui vamos colocar a gestão dos cromos do utilizador autenticado.
-            Cada utilizador terá a sua própria caderneta privada.
-          </p>
-        </section>
-      );
+      return <V2AlbumPage profile={profile} />;
     }
 
     if (section === "suggestions") {

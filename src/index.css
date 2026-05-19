@@ -528,3 +528,230 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+/* =========================
+   V2 Album
+   ========================= */
+
+   .v2-album-page {
+    display: grid;
+    gap: 18px;
+  }
+  
+  .v2-album-summary {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+    margin-top: 18px;
+  }
+  
+  .v2-album-summary div {
+    padding: 16px;
+    border-radius: 18px;
+    background: #f8fafc;
+  }
+  
+  .v2-album-summary div.highlight {
+    background: var(--blue);
+  }
+  
+  .v2-album-summary span {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 950;
+  }
+  
+  .v2-album-summary strong {
+    color: var(--blue);
+    font-size: 2rem;
+    line-height: 1;
+  }
+  
+  .v2-album-summary .highlight span,
+  .v2-album-summary .highlight strong {
+    color: white;
+  }
+  
+  .v2-progress-bar {
+    overflow: hidden;
+    height: 16px;
+    margin-top: 18px;
+    border-radius: 999px;
+    background: #e5eaf2;
+  }
+  
+  .v2-progress-bar div {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--yellow), var(--blue));
+    transition: width 0.25s ease;
+  }
+  
+  .v2-album-controls {
+    display: grid;
+    grid-template-columns: 230px 1fr auto;
+    gap: 14px;
+    align-items: end;
+    margin-bottom: 18px;
+  }
+  
+  .v2-album-controls label {
+    display: grid;
+    gap: 8px;
+    color: #344054;
+    font-weight: 900;
+  }
+  
+  .v2-filter-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .v2-filter-buttons button {
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 14px;
+    background: #eef3fb;
+    color: #101828;
+    font-weight: 950;
+  }
+  
+  .v2-filter-buttons button.active {
+    background: var(--yellow);
+  }
+  
+  .v2-stickers-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  
+  .v2-sticker-card {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: center;
+    padding: 16px;
+  }
+  
+  .v2-sticker-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    color: var(--blue);
+    background: #e8f1fb;
+    font-size: 0.78rem;
+    font-weight: 950;
+  }
+  
+  .v2-sticker-card h3 {
+    margin: 10px 0 4px;
+    color: #101828;
+    font-size: 1rem;
+  }
+  
+  .v2-sticker-card p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+  
+  .v2-sticker-actions {
+    display: grid;
+    justify-items: end;
+    gap: 8px;
+    min-width: 170px;
+  }
+  
+  .v2-sticker-actions small {
+    color: #9a6700;
+    font-weight: 900;
+  }
+  
+  .v2-sticker-status {
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 950;
+    text-transform: uppercase;
+  }
+  
+  .v2-sticker-status.falta {
+    color: var(--danger);
+    background: #fee4e2;
+  }
+  
+  .v2-sticker-status.tenho {
+    color: var(--success);
+    background: #d1fadf;
+  }
+  
+  .v2-sticker-status.repetido {
+    color: #9a6700;
+    background: #fff3c4;
+  }
+  
+  .v2-quantity-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .v2-quantity-controls button {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    color: white;
+    background: var(--blue);
+    font-size: 1.1rem;
+    font-weight: 950;
+    padding: 0;
+  }
+  
+  .v2-quantity-controls input {
+    width: 64px;
+    min-height: 34px;
+    height: 34px;
+    padding: 0 8px;
+    text-align: center;
+    border-radius: 10px;
+    font-weight: 900;
+  }
+  
+  @media (max-width: 940px) {
+    .v2-album-summary,
+    .v2-stickers-list {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  
+    .v2-album-controls {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  @media (max-width: 560px) {
+    .v2-album-summary,
+    .v2-stickers-list {
+      grid-template-columns: 1fr;
+    }
+  
+    .v2-sticker-card {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  
+    .v2-sticker-actions {
+      justify-items: stretch;
+    }
+  
+    .v2-quantity-controls input {
+      flex: 1;
+    }
+  }
