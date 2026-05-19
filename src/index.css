@@ -911,3 +911,145 @@ textarea:focus {
     align-items: flex-start;
   }
 }
+/* =========================
+   V2 Perfect Trades
+   ========================= */
+
+   .v2-subsection-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin: 26px 0 14px;
+  }
+  
+  .v2-subsection-title h3 {
+    margin: 0;
+    color: var(--blue);
+    font-size: 1.45rem;
+  }
+  
+  .v2-subsection-title span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--yellow);
+    color: #101828;
+    font-weight: 950;
+  }
+  
+  .v2-perfect-trades-list {
+    display: grid;
+    gap: 14px;
+  }
+  
+  .v2-perfect-trade-card {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 16px;
+    padding: 18px;
+    border-radius: 20px;
+    background:
+      radial-gradient(circle at top right, rgba(255, 212, 90, 0.22), transparent 36%),
+      #f8fafc;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .v2-perfect-trade-person {
+    padding: 16px;
+    border-radius: 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .v2-perfect-trade-person span,
+  .v2-perfect-trade-flow span {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 950;
+  }
+  
+  .v2-perfect-trade-person h4 {
+    margin: 0 0 4px;
+    color: var(--blue);
+    font-size: 1.25rem;
+  }
+  
+  .v2-perfect-trade-person p {
+    margin: 0;
+    color: var(--muted);
+    font-weight: 800;
+  }
+  
+  .v2-perfect-trade-flow {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 14px;
+    align-items: center;
+  }
+  
+  .v2-perfect-trade-flow > div:not(.v2-trade-arrow) {
+    padding: 16px;
+    border-radius: 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .v2-perfect-trade-flow strong {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #e8f1fb;
+    color: var(--blue);
+    font-weight: 950;
+  }
+  
+  .v2-perfect-trade-flow p {
+    margin: 8px 0 0;
+    color: #344054;
+    font-weight: 800;
+  }
+  
+  .v2-perfect-trade-flow small {
+    display: block;
+    margin-top: 8px;
+    color: var(--success);
+    font-weight: 950;
+  }
+  
+  .v2-trade-arrow {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    background: var(--yellow);
+    color: #101828;
+    font-size: 1.4rem;
+    font-weight: 950;
+  }
+  
+  @media (max-width: 860px) {
+    .v2-perfect-trade-card,
+    .v2-perfect-trade-flow {
+      grid-template-columns: 1fr;
+    }
+  
+    .v2-trade-arrow {
+      justify-self: center;
+      transform: rotate(90deg);
+    }
+  
+    .v2-subsection-title {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }

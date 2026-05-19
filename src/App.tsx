@@ -23,7 +23,9 @@ import {
   type V2AlbumState,
 } from "./lib/v2Album";
 import {
+  fetchV2PerfectTradesForProfile,
   fetchV2SuggestionsForProfile,
+  type V2PerfectTradeSuggestion,
   type V2Suggestion,
 } from "./lib/v2Suggestions";
 
@@ -85,6 +87,7 @@ function getStickerStatus(quantity: number) {
 
 function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
   const [suggestions, setSuggestions] = useState<V2Suggestion[]>([]);
+  const [perfectTrades, setPerfectTrades] = useState<V2PerfectTradeSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState("A carregar sugestões...");
   const [search, setSearch] = useState("");
@@ -94,10 +97,17 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
       setIsLoading(true);
       setStatus("A carregar sugestões...");
 
-      const rows = await fetchV2SuggestionsForProfile(profile);
+      const [simpleRows, perfectRows] = await Promise.all([
+        fetchV2SuggestionsForProfile(profile),
+        fetchV2PerfectTradesForProfile(profile),
+      ]);
 
-      setSuggestions(rows);
-      setStatus(`${rows.length} sugestão(ões) encontrada(s).`);
+      setSuggestions(simpleRows);
+      setPerfectTrades(perfectRows);
+
+      setStatus(
+        `${perfectRows.length} troca(s) perfeita(s) e ${simpleRows.length} sugestão(ões) simples.`
+      );
     } catch (error) {
       console.error(error);
       setStatus("Não foi possível carregar as sugestões.");
@@ -130,6 +140,30 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
       );
     });
   }, [suggestions, search]);
+
+  const filteredPerfectTrades = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return perfectTrades;
+    }
+
+    return perfectTrades.filter((trade) => {
+      const stickerINeed = getStickerById(trade.sticker_i_need_id);
+      const stickerTheyNeed = getStickerById(trade.sticker_they_need_id);
+
+      return (
+        trade.other_name.toLowerCase().includes(normalizedSearch) ||
+        trade.other_username.toLowerCase().includes(normalizedSearch) ||
+        stickerINeed?.label.toLowerCase().includes(normalizedSearch) ||
+        stickerINeed?.name.toLowerCase().includes(normalizedSearch) ||
+        stickerINeed?.section.toLowerCase().includes(normalizedSearch) ||
+        stickerTheyNeed?.label.toLowerCase().includes(normalizedSearch) ||
+        stickerTheyNeed?.name.toLowerCase().includes(normalizedSearch) ||
+        stickerTheyNeed?.section.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [perfectTrades, search]);
 
   const suggestionsByUser = useMemo(() => {
     const grouped = new Map<string, V2Suggestion[]>();
@@ -167,7 +201,12 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
       <section className="v2-suggestions-summary">
         <div>
-          <span>Total de sugestões</span>
+          <span>Trocas perfeitas</span>
+          <strong>{perfectTrades.length}</strong>
+        </div>
+
+        <div>
+          <span>Sugestões simples</span>
           <strong>{suggestions.length}</strong>
         </div>
 
@@ -188,48 +227,123 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
         </label>
       </div>
 
-      <section className="v2-suggestions-list">
-        {suggestionsByUser.map((group) => (
-          <article className="v2-suggestion-group" key={group.profileId}>
-            <div className="v2-suggestion-group-header">
-              <div>
-                <span>Pode ajudar</span>
-                <h3>{group.name}</h3>
-                <p>@{group.username}</p>
-              </div>
+      <section className="v2-perfect-trades-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Melhores oportunidades</p>
+            <h3>Trocas perfeitas</h3>
+          </div>
+          <span>{filteredPerfectTrades.length}</span>
+        </div>
 
-              <strong>{group.rows.length} cromo(s)</strong>
-            </div>
+        <div className="v2-perfect-trades-list">
+          {filteredPerfectTrades.map((trade) => {
+            const stickerINeed = getStickerById(trade.sticker_i_need_id);
+            const stickerTheyNeed = getStickerById(trade.sticker_they_need_id);
 
-            <div className="v2-suggestion-stickers">
-              {group.rows.map((suggestion) => {
-                const sticker = getStickerById(suggestion.sticker_id);
+            return (
+              <article
+                className="v2-perfect-trade-card"
+                key={`${trade.other_profile_id}-${trade.sticker_i_need_id}-${trade.sticker_they_need_id}`}
+              >
+                <div className="v2-perfect-trade-person">
+                  <span>Troca com</span>
+                  <h4>{trade.other_name}</h4>
+                  <p>@{trade.other_username}</p>
+                </div>
 
-                return (
-                  <div className="v2-suggestion-card" key={`${suggestion.offered_by_profile_id}-${suggestion.sticker_id}`}>
-                    <span>{sticker?.label ?? suggestion.sticker_id}</span>
-
-                    <div>
-                      <strong>{sticker?.name ?? "Cromo"}</strong>
-                      <p>{sticker?.section ?? "Secção desconhecida"}</p>
-                    </div>
-
+                <div className="v2-perfect-trade-flow">
+                  <div>
+                    <span>Tu recebes</span>
+                    <strong>{stickerINeed?.label ?? trade.sticker_i_need_id}</strong>
+                    <p>{stickerINeed?.name ?? "Cromo"}</p>
                     <small>
-                      {suggestion.available_duplicates} disponível
-                      {suggestion.available_duplicates > 1 ? "is" : ""}
+                      {trade.other_available_duplicates} disponível
+                      {trade.other_available_duplicates > 1 ? "is" : ""}
                     </small>
                   </div>
-                );
-              })}
-            </div>
-          </article>
-        ))}
 
-        {filteredSuggestions.length === 0 && !isLoading && (
-          <p className="empty-message">
-            Ainda não há sugestões de troca para a tua caderneta.
-          </p>
-        )}
+                  <div className="v2-trade-arrow">⇄</div>
+
+                  <div>
+                    <span>{trade.other_name} recebe</span>
+                    <strong>
+                      {stickerTheyNeed?.label ?? trade.sticker_they_need_id}
+                    </strong>
+                    <p>{stickerTheyNeed?.name ?? "Cromo"}</p>
+                    <small>
+                      {trade.my_available_duplicates} disponível
+                      {trade.my_available_duplicates > 1 ? "is" : ""}
+                    </small>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+
+          {filteredPerfectTrades.length === 0 && !isLoading && (
+            <p className="empty-message">
+              Ainda não há trocas perfeitas para a tua caderneta.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="v2-simple-suggestions-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Ajuda possível</p>
+            <h3>Sugestões simples</h3>
+          </div>
+          <span>{filteredSuggestions.length}</span>
+        </div>
+
+        <section className="v2-suggestions-list">
+          {suggestionsByUser.map((group) => (
+            <article className="v2-suggestion-group" key={group.profileId}>
+              <div className="v2-suggestion-group-header">
+                <div>
+                  <span>Pode ajudar</span>
+                  <h3>{group.name}</h3>
+                  <p>@{group.username}</p>
+                </div>
+
+                <strong>{group.rows.length} cromo(s)</strong>
+              </div>
+
+              <div className="v2-suggestion-stickers">
+                {group.rows.map((suggestion) => {
+                  const sticker = getStickerById(suggestion.sticker_id);
+
+                  return (
+                    <div
+                      className="v2-suggestion-card"
+                      key={`${suggestion.offered_by_profile_id}-${suggestion.sticker_id}`}
+                    >
+                      <span>{sticker?.label ?? suggestion.sticker_id}</span>
+
+                      <div>
+                        <strong>{sticker?.name ?? "Cromo"}</strong>
+                        <p>{sticker?.section ?? "Secção desconhecida"}</p>
+                      </div>
+
+                      <small>
+                        {suggestion.available_duplicates} disponível
+                        {suggestion.available_duplicates > 1 ? "is" : ""}
+                      </small>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          ))}
+
+          {filteredSuggestions.length === 0 && !isLoading && (
+            <p className="empty-message">
+              Ainda não há sugestões simples para a tua caderneta.
+            </p>
+          )}
+        </section>
       </section>
     </section>
   );
