@@ -8,6 +8,166 @@ export type V2DuplicateSticker = {
   duplicates: number;
 };
 
+const COUNTRY_FLAGS: Record<string, string> = {
+  "portugal": "🇵🇹",
+  "brasil": "🇧🇷",
+  "brazil": "🇧🇷",
+  "argentina": "🇦🇷",
+  "espanha": "🇪🇸",
+  "spain": "🇪🇸",
+  "frança": "🇫🇷",
+  "france": "🇫🇷",
+  "alemanha": "🇩🇪",
+  "germany": "🇩🇪",
+  "itália": "🇮🇹",
+  "italia": "🇮🇹",
+  "italy": "🇮🇹",
+  "inglaterra": "🏴",
+  "england": "🏴",
+  "holanda": "🇳🇱",
+  "netherlands": "🇳🇱",
+  "países baixos": "🇳🇱",
+  "paises baixos": "🇳🇱",
+  "uruguai": "🇺🇾",
+  "uruguay": "🇺🇾",
+  "croácia": "🇭🇷",
+  "croacia": "🇭🇷",
+  "croatia": "🇭🇷",
+  "bélgica": "🇧🇪",
+  "belgica": "🇧🇪",
+  "belgium": "🇧🇪",
+  "suíça": "🇨🇭",
+  "suica": "🇨🇭",
+  "switzerland": "🇨🇭",
+  "dinamarca": "🇩🇰",
+  "denmark": "🇩🇰",
+  "méxico": "🇲🇽",
+  "mexico": "🇲🇽",
+  "eua": "🇺🇸",
+  "usa": "🇺🇸",
+  "united states": "🇺🇸",
+  "estados unidos": "🇺🇸",
+  "canadá": "🇨🇦",
+  "canada": "🇨🇦",
+  "japão": "🇯🇵",
+  "japao": "🇯🇵",
+  "japan": "🇯🇵",
+  "coreia": "🇰🇷",
+  "coreia do sul": "🇰🇷",
+  "south korea": "🇰🇷",
+  "marrocos": "🇲🇦",
+  "morocco": "🇲🇦",
+  "senegal": "🇸🇳",
+  "gana": "🇬🇭",
+  "ghana": "🇬🇭",
+  "camarões": "🇨🇲",
+  "camaroes": "🇨🇲",
+  "cameroon": "🇨🇲",
+  "tunísia": "🇹🇳",
+  "tunisia": "🇹🇳",
+  "austrália": "🇦🇺",
+  "australia": "🇦🇺",
+  "irã": "🇮🇷",
+  "ira": "🇮🇷",
+  "iran": "🇮🇷",
+  "arábia saudita": "🇸🇦",
+  "arabia saudita": "🇸🇦",
+  "saudi arabia": "🇸🇦",
+  "catar": "🇶🇦",
+  "qatar": "🇶🇦",
+  "polónia": "🇵🇱",
+  "polonia": "🇵🇱",
+  "poland": "🇵🇱",
+  "sérvia": "🇷🇸",
+  "servia": "🇷🇸",
+  "serbia": "🇷🇸",
+  "equador": "🇪🇨",
+  "ecuador": "🇪🇨",
+  "austria": "🇦🇹",
+  "áustria": "🇦🇹",
+  "austria": "🇦🇹",
+  "turquia": "🇹🇷",
+  "türkiye": "🇹🇷",
+  "turkey": "🇹🇷",
+  "noruega": "🇳🇴",
+  "norway": "🇳🇴",
+  "argélia": "🇩🇿",
+  "argelia": "🇩🇿",
+  "algeria": "🇩🇿",
+};
+
+const COUNTRY_CODE_FLAGS: Record<string, string> = {
+  "POR": "🇵🇹",
+  "BRA": "🇧🇷",
+  "ARG": "🇦🇷",
+  "ESP": "🇪🇸",
+  "SPA": "🇪🇸",
+  "FRA": "🇫🇷",
+  "GER": "🇩🇪",
+  "DEU": "🇩🇪",
+  "ITA": "🇮🇹",
+  "ENG": "🏴",
+  "NED": "🇳🇱",
+  "HOL": "🇳🇱",
+  "URU": "🇺🇾",
+  "CRO": "🇭🇷",
+  "BEL": "🇧🇪",
+  "SUI": "🇨🇭",
+  "DEN": "🇩🇰",
+  "MEX": "🇲🇽",
+  "USA": "🇺🇸",
+  "CAN": "🇨🇦",
+  "JPN": "🇯🇵",
+  "KOR": "🇰🇷",
+  "MAR": "🇲🇦",
+  "SEN": "🇸🇳",
+  "GHA": "🇬🇭",
+  "CMR": "🇨🇲",
+  "TUN": "🇹🇳",
+  "AUS": "🇦🇺",
+  "IRN": "🇮🇷",
+  "KSA": "🇸🇦",
+  "QAT": "🇶🇦",
+  "POL": "🇵🇱",
+  "SRB": "🇷🇸",
+  "ECU": "🇪🇨",
+  "AUT": "🇦🇹",
+  "TUR": "🇹🇷",
+  "NOR": "🇳🇴",
+  "ALG": "🇩🇿",
+};
+
+function normalizeText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
+export function getV2StickerFlag(sticker: Sticker) {
+  const sectionKey = normalizeText(sticker.section);
+  const codePrefix = sticker.label.split(" ")[0]?.toUpperCase();
+
+  if (codePrefix && COUNTRY_CODE_FLAGS[codePrefix]) {
+    return COUNTRY_CODE_FLAGS[codePrefix];
+  }
+
+  if (COUNTRY_FLAGS[sectionKey]) {
+    return COUNTRY_FLAGS[sectionKey];
+  }
+
+  const foundKey = Object.keys(COUNTRY_FLAGS).find((country) =>
+    sectionKey.includes(normalizeText(country))
+  );
+
+  if (foundKey) {
+    return COUNTRY_FLAGS[foundKey];
+  }
+
+  return "🏆";
+}
+
 export function getV2DuplicateStickers(
   stickers: Sticker[],
   album: V2AlbumState
@@ -48,7 +208,9 @@ export function buildV2ShareMessage(
   );
 
   const lines = duplicates.map((item) => {
-    return `- ${item.sticker.label} · ${item.sticker.name} (${item.sticker.section}) x${item.duplicates}`;
+    const flag = getV2StickerFlag(item.sticker);
+
+    return `- ${flag} ${item.sticker.label} · ${item.sticker.name} (${item.sticker.section}) x${item.duplicates}`;
   });
 
   return [
@@ -168,17 +330,19 @@ export async function generateV2DuplicatesImage(
   let y = 370;
 
   visibleItems.forEach((item) => {
+    const flag = getV2StickerFlag(item.sticker);
+
     ctx.fillStyle = "#ffffff";
     roundRect(ctx, padding, y, width - padding * 2, 58, 18);
     ctx.fill();
 
     ctx.fillStyle = "#e8f1fb";
-    roundRect(ctx, padding + 18, y + 12, 118, 34, 17);
+    roundRect(ctx, padding + 18, y + 12, 150, 34, 17);
     ctx.fill();
 
     ctx.fillStyle = "#0f2f57";
     ctx.font = "900 20px Arial";
-    ctx.fillText(item.sticker.label, padding + 34, y + 36);
+    ctx.fillText(`${flag} ${item.sticker.label}`, padding + 32, y + 36);
 
     ctx.fillStyle = "#0f2f57";
     ctx.font = "800 24px Arial";
@@ -186,10 +350,10 @@ export async function generateV2DuplicatesImage(
     const nameLines = wrapText(
       ctx,
       `${item.sticker.name} · ${item.sticker.section}`,
-      650
+      600
     );
 
-    ctx.fillText(nameLines[0], padding + 158, y + 37);
+    ctx.fillText(nameLines[0], padding + 190, y + 37);
 
     ctx.fillStyle = "#f7c948";
     roundRect(ctx, width - padding - 100, y + 10, 82, 38, 19);

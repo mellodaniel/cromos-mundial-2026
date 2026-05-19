@@ -551,7 +551,7 @@ function V2ShareDuplicatesPage({ profile }: { profile: V2Profile }) {
 
       <section className="v2-share-actions">
         <button onClick={handleCopyMessage} disabled={isLoading || !shareMessage}>
-          Copiar mensagem
+          Copiar repetidas
         </button>
 
         <button
