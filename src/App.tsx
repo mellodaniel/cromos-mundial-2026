@@ -9,6 +9,7 @@ import {
   type V2Role,
 } from "./lib/v2Auth";
 import {
+  createV2User,
   fetchV2Users,
   updateV2UserActiveStatus,
   updateV2UserRole,
@@ -35,7 +36,13 @@ function getRoleLabel(role: V2Role) {
 function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
   const [users, setUsers] = useState<V2UserRow[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [status, setStatus] = useState("A carregar utilizadores...");
+
+  const [newUsername, setNewUsername] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<V2Role>("collector");
 
   const loadUsers = async () => {
     try {
@@ -58,6 +65,52 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  const handleCreateUser = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!newUsername.trim() || !newDisplayName.trim() || !newPassword.trim()) {
+      alert("Preenche username, nome e senha.");
+      return;
+    }
+
+    if (newPassword.trim().length < 6) {
+      alert("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    try {
+      setIsCreatingUser(true);
+      setStatus("A criar utilizador...");
+
+      await createV2User({
+        username: newUsername,
+        display_name: newDisplayName,
+        password: newPassword,
+        role: newRole,
+        group_slug: "familia-mello",
+      });
+
+      setNewUsername("");
+      setNewDisplayName("");
+      setNewPassword("");
+      setNewRole("collector");
+
+      await loadUsers();
+
+      alert("Utilizador criado com sucesso.");
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível criar o utilizador.";
+      setStatus(message);
+      alert(message);
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
 
   const handleRoleChange = async (profileId: string, role: V2Role) => {
     try {
@@ -88,10 +141,70 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
           <p>{status}</p>
         </div>
 
-        <button onClick={loadUsers} disabled={isLoadingUsers}>
+        <button onClick={loadUsers} disabled={isLoadingUsers || isCreatingUser}>
           {isLoadingUsers ? "A carregar..." : "Atualizar"}
         </button>
       </div>
+
+      <form className="v2-create-user-form" onSubmit={handleCreateUser}>
+        <div>
+          <h3>Criar novo utilizador</h3>
+          <p>
+            O utilizador entra com username e senha. O email técnico é criado
+            automaticamente.
+          </p>
+        </div>
+
+        <div className="v2-create-user-grid">
+          <label>
+            Username
+            <input
+              value={newUsername}
+              onChange={(event) => setNewUsername(event.target.value)}
+              placeholder="Ex: joao"
+              autoCapitalize="none"
+            />
+          </label>
+
+          <label>
+            Nome
+            <input
+              value={newDisplayName}
+              onChange={(event) => setNewDisplayName(event.target.value)}
+              placeholder="Ex: João"
+            />
+          </label>
+
+          <label>
+            Senha inicial
+            <input
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              placeholder="Mínimo 6 caracteres"
+              type="password"
+            />
+          </label>
+
+          <label>
+            Role
+            <select
+              value={newRole}
+              onChange={(event) => setNewRole(event.target.value as V2Role)}
+            >
+              <option value="collector">Colecionador</option>
+              <option value="viewer">Visualizador</option>
+              <option value="group_admin">Admin do Grupo</option>
+              {currentProfile.role === "super_admin" && (
+                <option value="super_admin">Super Admin</option>
+              )}
+            </select>
+          </label>
+        </div>
+
+        <button type="submit" disabled={isCreatingUser}>
+          {isCreatingUser ? "A criar..." : "Criar utilizador"}
+        </button>
+      </form>
 
       <div className="v2-users-list">
         {users.map((user) => {
