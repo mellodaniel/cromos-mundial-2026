@@ -40,22 +40,21 @@ import {
   type V2CollectorStats,
 } from "./lib/v2Collectors";
 
-type V2Section =
-  | "home"
+type V2PanelKey =
   | "album"
   | "suggestions"
   | "trade-requests"
   | "collectors"
-  | "admin-users"
-  | "admin-groups"
-  | "admin-albums"
-  | "stock";
+  | "stock"
+  | "admin";
+
+type V2AdminPanelKey = "users" | "albums";
 
 type V2AlbumFilter = "all" | "owned" | "missing" | "duplicates";
 
 function getRoleLabel(role: V2Role) {
   if (role === "super_admin") return "Super Admin";
-  if (role === "group_admin") return "Admin do Grupo";
+  if (role === "group_admin") return "Admin";
   if (role === "collector") return "Colecionador";
   return "Visualizador";
 }
@@ -105,6 +104,29 @@ function getStickerStatus(quantity: number) {
   return "Repetido";
 }
 
+function V2AccordionHeader({
+  title,
+  subtitle,
+  isOpen,
+  onClick,
+}: {
+  title: string;
+  subtitle?: string;
+  isOpen: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button className="v2-accordion-header" onClick={onClick}>
+      <div>
+        <strong>{title}</strong>
+        {subtitle && <span>{subtitle}</span>}
+      </div>
+
+      <em>{isOpen ? "−" : "+"}</em>
+    </button>
+  );
+}
+
 function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
   const [collectors, setCollectors] = useState<V2CollectorStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -152,7 +174,7 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
   const totalOwned = collectors.reduce((total, item) => total + item.owned, 0);
 
   return (
-    <section className="card v2-content-card">
+    <section className="v2-inner-section">
       <div className="v2-section-header">
         <div>
           <p className="eyebrow dark">Plataforma</p>
@@ -370,7 +392,7 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
   };
 
   return (
-    <section className="card v2-content-card">
+    <section className="v2-inner-section">
       <div className="v2-section-header">
         <div>
           <p className="eyebrow dark">Trocas</p>
@@ -473,7 +495,6 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
   const handleCreatePerfectTrade = async (trade: V2PerfectTradeSuggestion) => {
     if (!profile.group_id) {
-      // Mantemos compatibilidade com a tabela atual. Depois podemos remover group_id totalmente.
       alert("Este utilizador não tem grupo associado.");
       return;
     }
@@ -571,7 +592,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
   }, [filteredSuggestions]);
 
   return (
-    <section className="card v2-content-card">
+    <section className="v2-inner-section">
       <div className="v2-section-header">
         <div>
           <p className="eyebrow dark">Trocas</p>
@@ -744,7 +765,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
   );
 }
 
-function V2AlbumPage({ profile }: { profile: V2Profile }) {
+function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumChanged: () => void }) {
   const [album, setAlbum] = useState<V2AlbumState>({});
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState("A carregar caderneta...");
@@ -839,6 +860,7 @@ function V2AlbumPage({ profile }: { profile: V2Profile }) {
       );
 
       setStatus("Caderneta sincronizada.");
+      onAlbumChanged();
     } catch (error) {
       console.error(error);
       setAlbum(previousAlbum);
@@ -862,6 +884,7 @@ function V2AlbumPage({ profile }: { profile: V2Profile }) {
       await upsertV2StickerQuantity(profile.id, sticker.id, nextQuantity);
 
       setStatus("Caderneta sincronizada.");
+      onAlbumChanged();
     } catch (error) {
       console.error(error);
       setAlbum(previousAlbum);
@@ -871,161 +894,144 @@ function V2AlbumPage({ profile }: { profile: V2Profile }) {
   };
 
   return (
-    <section className="v2-album-page">
-      <section className="card v2-content-card">
-        <div className="v2-section-header">
-          <div>
-            <p className="eyebrow dark">Caderneta</p>
-            <h2>A minha caderneta</h2>
-            <p>
-              {profile.display_name} · {status}
-            </p>
-          </div>
-
-          <button onClick={loadAlbum} disabled={isLoading}>
-            {isLoading ? "A carregar..." : "Atualizar"}
-          </button>
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Caderneta</p>
+          <h2>A minha caderneta</h2>
+          <p>
+            {profile.display_name} · {status}
+          </p>
         </div>
 
-        <section className="v2-album-summary">
-          <div>
-            <span>Total</span>
-            <strong>{summary.total}</strong>
-          </div>
+        <button onClick={loadAlbum} disabled={isLoading}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
 
-          <div>
-            <span>Já tenho</span>
-            <strong>{summary.owned}</strong>
-          </div>
+      <section className="v2-album-summary compact">
+        <div>
+          <span>Total</span>
+          <strong>{summary.total}</strong>
+        </div>
 
-          <div>
-            <span>Faltam</span>
-            <strong>{summary.missing}</strong>
-          </div>
+        <div>
+          <span>Já tenho</span>
+          <strong>{summary.owned}</strong>
+        </div>
 
-          <div>
-            <span>Repetidos</span>
-            <strong>{summary.duplicates}</strong>
-          </div>
+        <div>
+          <span>Faltam</span>
+          <strong>{summary.missing}</strong>
+        </div>
 
-          <div className="highlight">
-            <span>Completo</span>
-            <strong>{summary.percentage}%</strong>
-          </div>
-        </section>
+        <div>
+          <span>Repetidos</span>
+          <strong>{summary.duplicates}</strong>
+        </div>
 
-        <div className="v2-progress-bar">
-          <div style={{ width: `${summary.percentage}%` }} />
+        <div className="highlight">
+          <span>Completo</span>
+          <strong>{summary.percentage}%</strong>
         </div>
       </section>
 
-      <section className="card v2-content-card">
-        <div className="v2-album-controls">
-          <label>
-            Secção / País
-            <select
-              value={selectedSection}
-              onChange={(event) => setSelectedSection(event.target.value)}
-            >
-              {sections.map((section) => (
-                <option key={section} value={section}>
-                  {section}
-                </option>
-              ))}
-            </select>
-          </label>
+      <div className="v2-progress-bar">
+        <div style={{ width: `${summary.percentage}%` }} />
+      </div>
 
-          <label>
-            Pesquisar
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Ex: ARG 17, Messi, Brasil, FWC..."
-            />
-          </label>
+      <div className="v2-album-controls">
+        <label>
+          Secção / País
+          <select
+            value={selectedSection}
+            onChange={(event) => setSelectedSection(event.target.value)}
+          >
+            {sections.map((section) => (
+              <option key={section} value={section}>
+                {section}
+              </option>
+            ))}
+          </select>
+        </label>
 
-          <div className="v2-filter-buttons">
-            <button
-              className={filter === "all" ? "active" : ""}
-              onClick={() => setFilter("all")}
-            >
-              Todos
-            </button>
+        <label>
+          Pesquisar
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: ARG 17, Messi, Brasil, FWC..."
+          />
+        </label>
 
-            <button
-              className={filter === "owned" ? "active" : ""}
-              onClick={() => setFilter("owned")}
-            >
-              Tenho
-            </button>
+        <div className="v2-filter-buttons">
+          <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
+            Todos
+          </button>
 
-            <button
-              className={filter === "missing" ? "active" : ""}
-              onClick={() => setFilter("missing")}
-            >
-              Faltam
-            </button>
+          <button className={filter === "owned" ? "active" : ""} onClick={() => setFilter("owned")}>
+            Tenho
+          </button>
 
-            <button
-              className={filter === "duplicates" ? "active" : ""}
-              onClick={() => setFilter("duplicates")}
-            >
-              Repetidos
-            </button>
-          </div>
+          <button className={filter === "missing" ? "active" : ""} onClick={() => setFilter("missing")}>
+            Faltam
+          </button>
+
+          <button
+            className={filter === "duplicates" ? "active" : ""}
+            onClick={() => setFilter("duplicates")}
+          >
+            Repetidos
+          </button>
         </div>
+      </div>
 
-        <section className="v2-stickers-list">
-          {filteredStickers.map((sticker) => {
-            const quantity = getStickerQuantity(album, sticker.id);
-            const statusLabel = getStickerStatus(quantity);
-            const duplicates = quantity > 1 ? quantity - 1 : 0;
+      <section className="v2-stickers-list">
+        {filteredStickers.map((sticker) => {
+          const quantity = getStickerQuantity(album, sticker.id);
+          const statusLabel = getStickerStatus(quantity);
+          const duplicates = quantity > 1 ? quantity - 1 : 0;
 
-            return (
-              <article className="card v2-sticker-card" key={sticker.id}>
-                <div>
-                  <span className="v2-sticker-label">{sticker.label}</span>
-                  <h3>{sticker.name}</h3>
-                  <p>{sticker.section}</p>
+          return (
+            <article className="card v2-sticker-card" key={sticker.id}>
+              <div>
+                <span className="v2-sticker-label">{sticker.label}</span>
+                <h3>{sticker.name}</h3>
+                <p>{sticker.section}</p>
+              </div>
+
+              <div className="v2-sticker-actions">
+                <span className={`v2-sticker-status ${statusLabel.toLowerCase()}`}>
+                  {statusLabel}
+                </span>
+
+                {duplicates > 0 && (
+                  <small>
+                    {duplicates} repetido{duplicates > 1 ? "s" : ""}
+                  </small>
+                )}
+
+                <div className="v2-quantity-controls">
+                  <button onClick={() => updateQuantity(sticker, -1)}>-</button>
+
+                  <input
+                    value={quantity}
+                    inputMode="numeric"
+                    onChange={(event) => setDirectQuantity(sticker, event.target.value)}
+                  />
+
+                  <button onClick={() => updateQuantity(sticker, 1)}>+</button>
                 </div>
+              </div>
+            </article>
+          );
+        })}
 
-                <div className="v2-sticker-actions">
-                  <span
-                    className={`v2-sticker-status ${statusLabel.toLowerCase()}`}
-                  >
-                    {statusLabel}
-                  </span>
-
-                  {duplicates > 0 && (
-                    <small>
-                      {duplicates} repetido{duplicates > 1 ? "s" : ""}
-                    </small>
-                  )}
-
-                  <div className="v2-quantity-controls">
-                    <button onClick={() => updateQuantity(sticker, -1)}>-</button>
-
-                    <input
-                      value={quantity}
-                      inputMode="numeric"
-                      onChange={(event) =>
-                        setDirectQuantity(sticker, event.target.value)
-                      }
-                    />
-
-                    <button onClick={() => updateQuantity(sticker, 1)}>+</button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-
-          {filteredStickers.length === 0 && (
-            <p className="empty-message">
-              Nenhum cromo encontrado com estes filtros.
-            </p>
-          )}
-        </section>
+        {filteredStickers.length === 0 && (
+          <p className="empty-message">
+            Nenhum cromo encontrado com estes filtros.
+          </p>
+        )}
       </section>
     </section>
   );
@@ -1131,7 +1137,7 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
   };
 
   return (
-    <section className="card v2-content-card">
+    <section className="v2-inner-section">
       <div className="v2-section-header">
         <div>
           <p className="eyebrow dark">Administração</p>
@@ -1191,7 +1197,7 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
             >
               <option value="collector">Colecionador</option>
               <option value="viewer">Visualizador</option>
-              <option value="group_admin">Admin do Grupo</option>
+              <option value="group_admin">Admin</option>
               {currentProfile.role === "super_admin" && (
                 <option value="super_admin">Super Admin</option>
               )}
@@ -1211,11 +1217,7 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
           return (
             <article className="v2-user-row" key={user.id}>
               <div className="v2-user-main">
-                <span
-                  className={`v2-user-status ${
-                    user.is_active ? "active" : "inactive"
-                  }`}
-                >
+                <span className={`v2-user-status ${user.is_active ? "active" : "inactive"}`}>
                   {user.is_active ? "Ativo" : "Inativo"}
                 </span>
 
@@ -1227,8 +1229,7 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
 
                 {isCurrentUser && (
                   <p className="v2-self-warning">
-                    Não podes alterar a tua própria role nem desativar o teu
-                    acesso.
+                    Não podes alterar a tua própria role nem desativar o teu acesso.
                   </p>
                 )}
               </div>
@@ -1244,7 +1245,7 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
                     }
                   >
                     <option value="super_admin">Super Admin</option>
-                    <option value="group_admin">Admin do Grupo</option>
+                    <option value="group_admin">Admin</option>
                     <option value="collector">Colecionador</option>
                     <option value="viewer">Visualizador</option>
                   </select>
@@ -1281,129 +1282,32 @@ function V2Dashboard({
   profile: V2Profile;
   onSignOut: () => void;
 }) {
-  const [section, setSection] = useState<V2Section>("home");
+  const [openPanel, setOpenPanel] = useState<V2PanelKey | null>("album");
+  const [adminPanel, setAdminPanel] = useState<V2AdminPanelKey>("users");
+  const [summaryAlbum, setSummaryAlbum] = useState<V2AlbumState>({});
+  const [summaryStatus, setSummaryStatus] = useState("A carregar progresso...");
+
   const showAdmin = canViewAdmin(profile);
+  const summary = useMemo(() => calculateV2AlbumSummary(summaryAlbum), [summaryAlbum]);
 
-  const renderContent = () => {
-    if (section === "album") {
-      return <V2AlbumPage profile={profile} />;
+  const loadSummary = async () => {
+    try {
+      setSummaryStatus("A carregar progresso...");
+      const state = await fetchV2Album(profile.id);
+      setSummaryAlbum(state);
+      setSummaryStatus("Progresso atualizado.");
+    } catch (error) {
+      console.error(error);
+      setSummaryStatus("Não foi possível carregar o progresso.");
     }
+  };
 
-    if (section === "suggestions") {
-      return <V2SuggestionsPage profile={profile} />;
-    }
+  useEffect(() => {
+    loadSummary();
+  }, [profile.id]);
 
-    if (section === "trade-requests") {
-      return <V2TradeRequestsPage profile={profile} />;
-    }
-
-    if (section === "collectors") {
-      return <V2CollectorsPage currentProfile={profile} />;
-    }
-
-    if (section === "admin-users") {
-      return <V2AdminUsers currentProfile={profile} />;
-    }
-
-    if (section === "admin-groups") {
-      return (
-        <section className="card v2-content-card">
-          <p className="eyebrow dark">Administração</p>
-          <h2>Gerir grupos</h2>
-          <p>
-            Este módulo pode ficar reservado para uma fase futura, caso queiras
-            criar comunidades ou ligas privadas.
-          </p>
-        </section>
-      );
-    }
-
-    if (section === "admin-albums") {
-      return (
-        <section className="card v2-content-card">
-          <p className="eyebrow dark">Administração</p>
-          <h2>Ver cadernetas</h2>
-          <p>
-            Aqui o admin poderá consultar cadernetas de outros utilizadores.
-          </p>
-        </section>
-      );
-    }
-
-    if (section === "stock") {
-      return (
-        <section className="card v2-content-card">
-          <p className="eyebrow dark">Stock</p>
-          <h2>Stock de saquetas</h2>
-          <p>
-            Aqui vamos ligar o módulo já existente de disponibilidade online das
-            saquetas.
-          </p>
-        </section>
-      );
-    }
-
-    return (
-      <section className="v2-dashboard-grid">
-        <button className="card v2-menu-card" onClick={() => setSection("album")}>
-          <span>01</span>
-          <h2>A minha caderneta</h2>
-          <p>Adicionar, remover e consultar os meus cromos.</p>
-        </button>
-
-        <button
-          className="card v2-menu-card"
-          onClick={() => setSection("suggestions")}
-        >
-          <span>02</span>
-          <h2>Sugestões de troca</h2>
-          <p>Ver quem tem cromos repetidos que me faltam.</p>
-        </button>
-
-        <button
-          className="card v2-menu-card"
-          onClick={() => setSection("trade-requests")}
-        >
-          <span>03</span>
-          <h2>Propostas de troca</h2>
-          <p>Acompanhar propostas enviadas e recebidas.</p>
-        </button>
-
-        <button className="card v2-menu-card" onClick={() => setSection("collectors")}>
-          <span>04</span>
-          <h2>Colecionadores</h2>
-          <p>Ver ranking geral, progresso e repetidos da plataforma.</p>
-        </button>
-
-        <button className="card v2-menu-card" onClick={() => setSection("stock")}>
-          <span>05</span>
-          <h2>Stock de saquetas</h2>
-          <p>Consultar disponibilidade online das saquetas.</p>
-        </button>
-
-        {showAdmin && (
-          <>
-            <button
-              className="card v2-menu-card admin"
-              onClick={() => setSection("admin-users")}
-            >
-              <span>A1</span>
-              <h2>Gerir utilizadores</h2>
-              <p>Criar utilizadores, definir roles e ativar/desativar acessos.</p>
-            </button>
-
-            <button
-              className="card v2-menu-card admin"
-              onClick={() => setSection("admin-albums")}
-            >
-              <span>A2</span>
-              <h2>Ver cadernetas</h2>
-              <p>Consultar cadernetas de outros utilizadores.</p>
-            </button>
-          </>
-        )}
-      </section>
-    );
+  const togglePanel = (panel: V2PanelKey) => {
+    setOpenPanel((current) => (current === panel ? null : panel));
   };
 
   return (
@@ -1416,7 +1320,7 @@ function V2Dashboard({
             Colecionadores, cadernetas individuais e trocas automáticas entre todos.
           </p>
           <p className="cloud-status">
-            🔐 Sessão ativa · {getRoleLabel(profile.role)}
+            🔐 {profile.display_name} · {getRoleLabel(profile.role)} · {summaryStatus}
           </p>
         </div>
 
@@ -1425,31 +1329,172 @@ function V2Dashboard({
         </button>
       </header>
 
-      <section className="card v2-user-card">
+      <section className="v2-main-summary card">
         <div>
-          <span>Olá</span>
-          <h2>{profile.display_name}</h2>
-          <p>
-            Username: <strong>{profile.username}</strong>
-          </p>
+          <span>Caderneta</span>
+          <strong>{profile.display_name}</strong>
         </div>
 
         <div>
-          <span>Role</span>
-          <h2>{getRoleLabel(profile.role)}</h2>
-          <p>
-            Estado: <strong>{profile.is_active ? "Ativo" : "Inativo"}</strong>
-          </p>
+          <span>Já tenho</span>
+          <strong>{summary.owned}</strong>
+        </div>
+
+        <div>
+          <span>Faltam</span>
+          <strong>{summary.missing}</strong>
+        </div>
+
+        <div>
+          <span>Repetidos</span>
+          <strong>{summary.duplicates}</strong>
+        </div>
+
+        <div className="highlight">
+          <span>Completo</span>
+          <strong>{summary.percentage}%</strong>
         </div>
       </section>
 
-      {section !== "home" && (
-        <button className="v2-back-button" onClick={() => setSection("home")}>
-          ← Voltar ao dashboard
-        </button>
-      )}
+      <section className="v2-main-progress card">
+        <div className="v2-progress-header">
+          <strong>Progresso da tua caderneta</strong>
+          <span>
+            {summary.owned} de {summary.total}
+          </span>
+        </div>
 
-      {renderContent()}
+        <div className="v2-progress-bar">
+          <div style={{ width: `${summary.percentage}%` }} />
+        </div>
+      </section>
+
+      <section className="v2-accordion-list">
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="A minha caderneta"
+            subtitle="Adicionar, remover e consultar cromos"
+            isOpen={openPanel === "album"}
+            onClick={() => togglePanel("album")}
+          />
+
+          {openPanel === "album" && (
+            <div className="v2-accordion-content">
+              <V2AlbumPage profile={profile} onAlbumChanged={loadSummary} />
+            </div>
+          )}
+        </article>
+
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Sugestões de troca"
+            subtitle="Trocas perfeitas e oportunidades simples"
+            isOpen={openPanel === "suggestions"}
+            onClick={() => togglePanel("suggestions")}
+          />
+
+          {openPanel === "suggestions" && (
+            <div className="v2-accordion-content">
+              <V2SuggestionsPage profile={profile} />
+            </div>
+          )}
+        </article>
+
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Propostas de troca"
+            subtitle="Enviadas, recebidas, aceites e concluídas"
+            isOpen={openPanel === "trade-requests"}
+            onClick={() => togglePanel("trade-requests")}
+          />
+
+          {openPanel === "trade-requests" && (
+            <div className="v2-accordion-content">
+              <V2TradeRequestsPage profile={profile} />
+            </div>
+          )}
+        </article>
+
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Colecionadores"
+            subtitle="Ranking geral e progresso da plataforma"
+            isOpen={openPanel === "collectors"}
+            onClick={() => togglePanel("collectors")}
+          />
+
+          {openPanel === "collectors" && (
+            <div className="v2-accordion-content">
+              <V2CollectorsPage currentProfile={profile} />
+            </div>
+          )}
+        </article>
+
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Stock de saquetas"
+            subtitle="Módulo de disponibilidade online"
+            isOpen={openPanel === "stock"}
+            onClick={() => togglePanel("stock")}
+          />
+
+          {openPanel === "stock" && (
+            <div className="v2-accordion-content">
+              <section className="v2-inner-section">
+                <p className="eyebrow dark">Stock</p>
+                <h2>Stock de saquetas</h2>
+                <p>
+                  Aqui vamos ligar o módulo já existente de disponibilidade online das saquetas.
+                </p>
+              </section>
+            </div>
+          )}
+        </article>
+
+        {showAdmin && (
+          <article className="card v2-accordion-card admin">
+            <V2AccordionHeader
+              title="Administração"
+              subtitle="Gerir utilizadores e dados da plataforma"
+              isOpen={openPanel === "admin"}
+              onClick={() => togglePanel("admin")}
+            />
+
+            {openPanel === "admin" && (
+              <div className="v2-accordion-content">
+                <div className="v2-admin-tabs">
+                  <button
+                    className={adminPanel === "users" ? "active" : ""}
+                    onClick={() => setAdminPanel("users")}
+                  >
+                    Gerir utilizadores
+                  </button>
+
+                  <button
+                    className={adminPanel === "albums" ? "active" : ""}
+                    onClick={() => setAdminPanel("albums")}
+                  >
+                    Ver cadernetas
+                  </button>
+                </div>
+
+                {adminPanel === "users" ? (
+                  <V2AdminUsers currentProfile={profile} />
+                ) : (
+                  <section className="v2-inner-section">
+                    <p className="eyebrow dark">Administração</p>
+                    <h2>Ver cadernetas</h2>
+                    <p>
+                      Este painel fica reservado para a próxima melhoria: escolher um
+                      colecionador e consultar a respetiva caderneta.
+                    </p>
+                  </section>
+                )}
+              </div>
+            )}
+          </article>
+        )}
+      </section>
     </main>
   );
 }
