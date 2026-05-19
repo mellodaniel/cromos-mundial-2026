@@ -15,6 +15,12 @@ export type V2Profile = {
   updated_at: string;
 };
 
+export type V2PublicSignupPayload = {
+  username: string;
+  display_name: string;
+  password: string;
+};
+
 const AUTH_DOMAIN = "cromos.local";
 
 function usernameToAuthEmail(username: string) {
@@ -35,6 +41,23 @@ export async function v2SignIn(username: string, password: string) {
   }
 
   return data;
+}
+
+export async function v2PublicSignup(payload: V2PublicSignupPayload) {
+  const { data, error } = await supabase.functions.invoke("v2-public-signup", {
+    body: payload,
+  });
+
+  if (error) {
+    console.error("Erro v2PublicSignup:", error);
+    throw error;
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error ?? "Não foi possível criar a conta.");
+  }
+
+  return data.user as V2Profile;
 }
 
 export async function v2SignOut() {

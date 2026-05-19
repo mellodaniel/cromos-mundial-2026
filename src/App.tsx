@@ -4,6 +4,7 @@ import { ALL_STICKERS, type Sticker } from "./data/stickers";
 import {
   canViewAdmin,
   getV2CurrentProfile,
+  v2PublicSignup,
   v2SignIn,
   v2SignOut,
   type V2Profile,
@@ -49,7 +50,6 @@ type V2PanelKey =
   | "admin";
 
 type V2AdminPanelKey = "users" | "albums";
-
 type V2AlbumFilter = "all" | "owned" | "missing" | "duplicates";
 
 function getRoleLabel(role: V2Role) {
@@ -83,7 +83,6 @@ function calculateV2AlbumSummary(album: V2AlbumState) {
 
   ALL_STICKERS.forEach((sticker) => {
     const quantity = getStickerQuantity(album, sticker.id);
-
     if (quantity > 0) owned += 1;
     if (quantity === 0) missing += 1;
     if (quantity > 1) duplicates += quantity - 1;
@@ -121,7 +120,6 @@ function V2AccordionHeader({
         <strong>{title}</strong>
         {subtitle && <span>{subtitle}</span>}
       </div>
-
       <em>{isOpen ? "−" : "+"}</em>
     </button>
   );
@@ -137,9 +135,7 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
     try {
       setIsLoading(true);
       setStatus("A carregar colecionadores...");
-
       const rows = await fetchV2CollectorsStats(ALL_STICKERS.length);
-
       setCollectors(rows);
       setStatus(`${rows.length} colecionador(es) ativo(s).`);
     } catch (error) {
@@ -157,7 +153,6 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
 
   const filteredCollectors = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-
     if (!normalizedSearch) return collectors;
 
     return collectors.filter((item) => {
@@ -181,7 +176,6 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
           <h2>Colecionadores</h2>
           <p>{status}</p>
         </div>
-
         <button onClick={loadCollectors} disabled={isLoading}>
           {isLoading ? "A carregar..." : "Atualizar"}
         </button>
@@ -192,17 +186,14 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
           <span>Colecionadores ativos</span>
           <strong>{collectors.length}</strong>
         </div>
-
         <div>
           <span>Total de cromos registados</span>
           <strong>{totalOwned}</strong>
         </div>
-
         <div>
           <span>Total de repetidos</span>
           <strong>{totalDuplicates}</strong>
         </div>
-
         <div className="highlight">
           <span>Mais completo</span>
           <strong>{topCollector ? `${topCollector.percentage}%` : "—"}</strong>
@@ -242,7 +233,6 @@ function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
                     </h3>
                     <p>@{item.profile.username} · {getRoleLabel(item.profile.role)}</p>
                   </div>
-
                   <strong>{item.percentage}%</strong>
                 </div>
 
@@ -399,7 +389,6 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
           <h2>Propostas de troca</h2>
           <p>{status}</p>
         </div>
-
         <button onClick={loadTradeRequests} disabled={isLoading}>
           {isLoading ? "A carregar..." : "Atualizar"}
         </button>
@@ -410,7 +399,6 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
           <span>Recebidas</span>
           <strong>{receivedRequests.length}</strong>
         </div>
-
         <div>
           <span>Enviadas</span>
           <strong>{sentRequests.length}</strong>
@@ -428,7 +416,6 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
 
         <div className="v2-trade-requests-list">
           {receivedRequests.map((request) => renderRequestCard(request, "received"))}
-
           {receivedRequests.length === 0 && !isLoading && (
             <p className="empty-message">Ainda não recebeste propostas de troca.</p>
           )}
@@ -446,7 +433,6 @@ function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
 
         <div className="v2-trade-requests-list">
           {sentRequests.map((request) => renderRequestCard(request, "sent"))}
-
           {sentRequests.length === 0 && !isLoading && (
             <p className="empty-message">Ainda não enviaste propostas de troca.</p>
           )}
@@ -531,14 +517,10 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
   const filteredSuggestions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-
-    if (!normalizedSearch) {
-      return suggestions;
-    }
+    if (!normalizedSearch) return suggestions;
 
     return suggestions.filter((suggestion) => {
       const sticker = getStickerById(suggestion.sticker_id);
-
       return (
         suggestion.offered_by_name.toLowerCase().includes(normalizedSearch) ||
         suggestion.offered_by_username.toLowerCase().includes(normalizedSearch) ||
@@ -551,10 +533,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
   const filteredPerfectTrades = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-
-    if (!normalizedSearch) {
-      return perfectTrades;
-    }
+    if (!normalizedSearch) return perfectTrades;
 
     return perfectTrades.filter((trade) => {
       const stickerINeed = getStickerById(trade.sticker_i_need_id);
@@ -597,9 +576,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
         <div>
           <p className="eyebrow dark">Trocas</p>
           <h2>Sugestões de troca</h2>
-          <p>
-            {profile.display_name} · {status}
-          </p>
+          <p>{profile.display_name} · {status}</p>
         </div>
 
         <button onClick={loadSuggestions} disabled={isLoading || isCreatingTrade}>
@@ -612,12 +589,10 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
           <span>Trocas perfeitas</span>
           <strong>{perfectTrades.length}</strong>
         </div>
-
         <div>
           <span>Sugestões simples</span>
           <strong>{suggestions.length}</strong>
         </div>
-
         <div>
           <span>Pessoas que podem ajudar</span>
           <strong>{suggestionsByUser.length}</strong>
@@ -675,9 +650,7 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
 
                   <div>
                     <span>{trade.other_name} recebe</span>
-                    <strong>
-                      {stickerTheyNeed?.label ?? trade.sticker_they_need_id}
-                    </strong>
+                    <strong>{stickerTheyNeed?.label ?? trade.sticker_they_need_id}</strong>
                     <p>{stickerTheyNeed?.name ?? "Cromo"}</p>
                     <small>
                       {trade.my_available_duplicates} disponível
@@ -723,7 +696,6 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
                   <h3>{group.name}</h3>
                   <p>@{group.username}</p>
                 </div>
-
                 <strong>{group.rows.length} cromo(s)</strong>
               </div>
 
@@ -737,12 +709,10 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
                       key={`${suggestion.offered_by_profile_id}-${suggestion.sticker_id}`}
                     >
                       <span>{sticker?.label ?? suggestion.sticker_id}</span>
-
                       <div>
                         <strong>{sticker?.name ?? "Cromo"}</strong>
                         <p>{sticker?.section ?? "Secção desconhecida"}</p>
                       </div>
-
                       <small>
                         {suggestion.available_duplicates} disponível
                         {suggestion.available_duplicates > 1 ? "is" : ""}
@@ -765,7 +735,13 @@ function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
   );
 }
 
-function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumChanged: () => void }) {
+function V2AlbumPage({
+  profile,
+  onAlbumChanged,
+}: {
+  profile: V2Profile;
+  onAlbumChanged: () => void;
+}) {
   const [album, setAlbum] = useState<V2AlbumState>({});
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState("A carregar caderneta...");
@@ -777,9 +753,7 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
     try {
       setIsLoading(true);
       setStatus("A carregar caderneta...");
-
       const state = await fetchV2Album(profile.id);
-
       setAlbum(state);
       setStatus("Caderneta sincronizada.");
     } catch (error) {
@@ -815,7 +789,6 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
 
     return ALL_STICKERS.filter((sticker) => {
       const quantity = getStickerQuantity(album, sticker.id);
-
       const matchesSection =
         selectedSection === "Todas" || sticker.section === selectedSection;
 
@@ -839,26 +812,14 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
   const updateQuantity = async (sticker: Sticker, change: number) => {
     const currentQuantity = getStickerQuantity(album, sticker.id);
     const nextQuantity = Math.max(0, currentQuantity + change);
-
     if (nextQuantity === currentQuantity) return;
 
     const previousAlbum = album;
-
-    setAlbum({
-      ...album,
-      [sticker.id]: nextQuantity,
-    });
+    setAlbum({ ...album, [sticker.id]: nextQuantity });
 
     try {
       setStatus("A guardar alteração...");
-
-      await incrementV2StickerQuantity(
-        profile.id,
-        sticker.id,
-        currentQuantity,
-        change
-      );
-
+      await incrementV2StickerQuantity(profile.id, sticker.id, currentQuantity, change);
       setStatus("Caderneta sincronizada.");
       onAlbumChanged();
     } catch (error) {
@@ -873,16 +834,11 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
     const nextQuantity = Math.max(0, Number(quantityText) || 0);
     const previousAlbum = album;
 
-    setAlbum({
-      ...album,
-      [sticker.id]: nextQuantity,
-    });
+    setAlbum({ ...album, [sticker.id]: nextQuantity });
 
     try {
       setStatus("A guardar alteração...");
-
       await upsertV2StickerQuantity(profile.id, sticker.id, nextQuantity);
-
       setStatus("Caderneta sincronizada.");
       onAlbumChanged();
     } catch (error) {
@@ -899,9 +855,7 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
         <div>
           <p className="eyebrow dark">Caderneta</p>
           <h2>A minha caderneta</h2>
-          <p>
-            {profile.display_name} · {status}
-          </p>
+          <p>{profile.display_name} · {status}</p>
         </div>
 
         <button onClick={loadAlbum} disabled={isLoading}>
@@ -914,22 +868,18 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
           <span>Total</span>
           <strong>{summary.total}</strong>
         </div>
-
         <div>
           <span>Já tenho</span>
           <strong>{summary.owned}</strong>
         </div>
-
         <div>
           <span>Faltam</span>
           <strong>{summary.missing}</strong>
         </div>
-
         <div>
           <span>Repetidos</span>
           <strong>{summary.duplicates}</strong>
         </div>
-
         <div className="highlight">
           <span>Completo</span>
           <strong>{summary.percentage}%</strong>
@@ -968,15 +918,12 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
           <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
             Todos
           </button>
-
           <button className={filter === "owned" ? "active" : ""} onClick={() => setFilter("owned")}>
             Tenho
           </button>
-
           <button className={filter === "missing" ? "active" : ""} onClick={() => setFilter("missing")}>
             Faltam
           </button>
-
           <button
             className={filter === "duplicates" ? "active" : ""}
             onClick={() => setFilter("duplicates")}
@@ -1013,13 +960,11 @@ function V2AlbumPage({ profile, onAlbumChanged }: { profile: V2Profile; onAlbumC
 
                 <div className="v2-quantity-controls">
                   <button onClick={() => updateQuantity(sticker, -1)}>-</button>
-
                   <input
                     value={quantity}
                     inputMode="numeric"
                     onChange={(event) => setDirectQuantity(sticker, event.target.value)}
                   />
-
                   <button onClick={() => updateQuantity(sticker, 1)}>+</button>
                 </div>
               </div>
@@ -1052,9 +997,7 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
     try {
       setIsLoadingUsers(true);
       setStatus("A carregar utilizadores...");
-
       const rows = await fetchV2Users();
-
       setUsers(rows);
       setStatus(`${rows.length} utilizador(es) encontrado(s).`);
     } catch (error) {
@@ -1099,9 +1042,7 @@ function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
       setNewDisplayName("");
       setNewPassword("");
       setNewRole("collector");
-
       await loadUsers();
-
       alert("Utilizador criado com sucesso.");
     } catch (error) {
       console.error(error);
@@ -1334,22 +1275,18 @@ function V2Dashboard({
           <span>Caderneta</span>
           <strong>{profile.display_name}</strong>
         </div>
-
         <div>
           <span>Já tenho</span>
           <strong>{summary.owned}</strong>
         </div>
-
         <div>
           <span>Faltam</span>
           <strong>{summary.missing}</strong>
         </div>
-
         <div>
           <span>Repetidos</span>
           <strong>{summary.duplicates}</strong>
         </div>
-
         <div className="highlight">
           <span>Completo</span>
           <strong>{summary.percentage}%</strong>
@@ -1359,9 +1296,7 @@ function V2Dashboard({
       <section className="v2-main-progress card">
         <div className="v2-progress-header">
           <strong>Progresso da tua caderneta</strong>
-          <span>
-            {summary.owned} de {summary.total}
-          </span>
+          <span>{summary.owned} de {summary.total}</span>
         </div>
 
         <div className="v2-progress-bar">
@@ -1377,7 +1312,6 @@ function V2Dashboard({
             isOpen={openPanel === "album"}
             onClick={() => togglePanel("album")}
           />
-
           {openPanel === "album" && (
             <div className="v2-accordion-content">
               <V2AlbumPage profile={profile} onAlbumChanged={loadSummary} />
@@ -1392,7 +1326,6 @@ function V2Dashboard({
             isOpen={openPanel === "suggestions"}
             onClick={() => togglePanel("suggestions")}
           />
-
           {openPanel === "suggestions" && (
             <div className="v2-accordion-content">
               <V2SuggestionsPage profile={profile} />
@@ -1407,7 +1340,6 @@ function V2Dashboard({
             isOpen={openPanel === "trade-requests"}
             onClick={() => togglePanel("trade-requests")}
           />
-
           {openPanel === "trade-requests" && (
             <div className="v2-accordion-content">
               <V2TradeRequestsPage profile={profile} />
@@ -1422,7 +1354,6 @@ function V2Dashboard({
             isOpen={openPanel === "collectors"}
             onClick={() => togglePanel("collectors")}
           />
-
           {openPanel === "collectors" && (
             <div className="v2-accordion-content">
               <V2CollectorsPage currentProfile={profile} />
@@ -1437,7 +1368,6 @@ function V2Dashboard({
             isOpen={openPanel === "stock"}
             onClick={() => togglePanel("stock")}
           />
-
           {openPanel === "stock" && (
             <div className="v2-accordion-content">
               <section className="v2-inner-section">
@@ -1459,7 +1389,6 @@ function V2Dashboard({
               isOpen={openPanel === "admin"}
               onClick={() => togglePanel("admin")}
             />
-
             {openPanel === "admin" && (
               <div className="v2-accordion-content">
                 <div className="v2-admin-tabs">
@@ -1501,23 +1430,28 @@ function V2Dashboard({
 
 function V2LoginPage() {
   const [profile, setProfile] = useState<V2Profile | null>(null);
+  const [mode, setMode] = useState<"login" | "signup">("login");
+
   const [username, setUsername] = useState("daniel");
   const [password, setPassword] = useState("");
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupDisplayName, setSignupDisplayName] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+
   const [status, setStatus] = useState("A verificar sessão...");
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
   const loadProfile = async () => {
     try {
       setIsLoading(true);
-
       const currentProfile = await getV2CurrentProfile();
-
       setProfile(currentProfile);
       setStatus(
         currentProfile
           ? "Sessão ativa"
-          : "Introduz o utilizador e senha para entrar."
+          : "Entra ou cria uma conta para começar."
       );
     } catch (error) {
       console.error(error);
@@ -1543,7 +1477,6 @@ function V2LoginPage() {
     try {
       setIsSigningIn(true);
       setStatus("A iniciar sessão...");
-
       await v2SignIn(username, password);
       await loadProfile();
     } catch (error) {
@@ -1552,6 +1485,48 @@ function V2LoginPage() {
       alert("Utilizador ou senha inválidos.");
     } finally {
       setIsSigningIn(false);
+    }
+  };
+
+  const handlePublicSignup = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!signupUsername.trim() || !signupDisplayName.trim() || !signupPassword.trim()) {
+      alert("Preenche nome, utilizador e senha.");
+      return;
+    }
+
+    if (signupPassword.trim().length < 6) {
+      alert("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    try {
+      setIsSigningUp(true);
+      setStatus("A criar conta...");
+
+      await v2PublicSignup({
+        username: signupUsername,
+        display_name: signupDisplayName,
+        password: signupPassword,
+      });
+
+      setStatus("Conta criada. A iniciar sessão...");
+
+      await v2SignIn(signupUsername, signupPassword);
+      await loadProfile();
+
+      setSignupUsername("");
+      setSignupDisplayName("");
+      setSignupPassword("");
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error ? error.message : "Não foi possível criar a conta.";
+      setStatus(message);
+      alert(message);
+    } finally {
+      setIsSigningUp(false);
     }
   };
 
@@ -1600,36 +1575,100 @@ function V2LoginPage() {
       </header>
 
       <section className="card v2-login-card">
-        <h2>Entrar na V2</h2>
-        <p>Usa apenas o utilizador e a senha. Não é necessário email para entrar.</p>
-
-        <form className="v2-login-form" onSubmit={handleSignIn}>
-          <label>
-            Utilizador
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="Ex: daniel"
-              autoCapitalize="none"
-              autoComplete="username"
-            />
-          </label>
-
-          <label>
-            Senha
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Senha"
-              type="password"
-              autoComplete="current-password"
-            />
-          </label>
-
-          <button type="submit" disabled={isSigningIn}>
-            {isSigningIn ? "A entrar..." : "Entrar"}
+        <div className="v2-login-tabs">
+          <button
+            className={mode === "login" ? "active" : ""}
+            onClick={() => setMode("login")}
+          >
+            Entrar
           </button>
-        </form>
+
+          <button
+            className={mode === "signup" ? "active" : ""}
+            onClick={() => setMode("signup")}
+          >
+            Criar conta
+          </button>
+        </div>
+
+        {mode === "login" ? (
+          <>
+            <h2>Entrar na V2</h2>
+            <p>Usa apenas o utilizador e a senha. Não é necessário email.</p>
+
+            <form className="v2-login-form" onSubmit={handleSignIn}>
+              <label>
+                Utilizador
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="Ex: daniel"
+                  autoCapitalize="none"
+                  autoComplete="username"
+                />
+              </label>
+
+              <label>
+                Senha
+                <input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Senha"
+                  type="password"
+                  autoComplete="current-password"
+                />
+              </label>
+
+              <button type="submit" disabled={isSigningIn}>
+                {isSigningIn ? "A entrar..." : "Entrar"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h2>Criar conta</h2>
+            <p>
+              Cria a tua conta de colecionador. Depois podes começar a registar a tua caderneta.
+            </p>
+
+            <form className="v2-login-form" onSubmit={handlePublicSignup}>
+              <label>
+                Nome público
+                <input
+                  value={signupDisplayName}
+                  onChange={(event) => setSignupDisplayName(event.target.value)}
+                  placeholder="Ex: João Silva"
+                />
+              </label>
+
+              <label>
+                Utilizador
+                <input
+                  value={signupUsername}
+                  onChange={(event) => setSignupUsername(event.target.value)}
+                  placeholder="Ex: joao"
+                  autoCapitalize="none"
+                  autoComplete="username"
+                />
+              </label>
+
+              <label>
+                Senha
+                <input
+                  value={signupPassword}
+                  onChange={(event) => setSignupPassword(event.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  type="password"
+                  autoComplete="new-password"
+                />
+              </label>
+
+              <button type="submit" disabled={isSigningUp}>
+                {isSigningUp ? "A criar..." : "Criar conta e entrar"}
+              </button>
+            </form>
+          </>
+        )}
       </section>
     </main>
   );

@@ -1536,3 +1536,29 @@ textarea:focus {
     padding: 0 16px 18px;
   }
 }
+/* =========================
+   V2 Public Signup
+   ========================= */
+
+   .v2-login-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 6px;
+    margin-bottom: 22px;
+    border-radius: 18px;
+    background: #eef3fb;
+  }
+  
+  .v2-login-tabs button {
+    min-height: 46px;
+    border-radius: 14px;
+    background: transparent;
+    color: #344054;
+    font-weight: 950;
+  }
+  
+  .v2-login-tabs button.active {
+    background: var(--yellow);
+    color: #101828;
+  }
