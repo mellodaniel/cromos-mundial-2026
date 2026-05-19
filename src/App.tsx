@@ -1,92 +1,114 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import html2canvas from "html2canvas";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import "./index.css";
-import { ALL_STICKERS, USERS, type AlbumOwner, type Sticker } from "./data/stickers";
+import { ALL_STICKERS, type Sticker } from "./data/stickers";
 import {
-  fetchCloudCollection,
-  importLocalCollectionToCloud,
-  incrementStickerQuantity,
-  upsertStickerQuantity,
-} from "./lib/supabase";
+  canViewAdmin,
+  getV2CurrentProfile,
+  v2PublicSignup,
+  v2SignIn,
+  v2SignOut,
+  type V2Profile,
+  type V2Role,
+} from "./lib/v2Auth";
 import {
-  createTradeRequest,
-  fetchTradeRequests,
-  updateTradeRequestStatus,
-  type TradeRequest,
-  type TradeStatus,
-} from "./lib/trades";
+  createV2User,
+  fetchV2Users,
+  updateV2UserActiveStatus,
+  updateV2UserRole,
+  type V2UserRow,
+} from "./lib/v2Admin";
 import {
-  checkStockNow,
-  fetchStockWatch,
-  type StockStatus,
-  type StockWatchItem,
-} from "./lib/stock";
+  fetchV2Album,
+  incrementV2StickerQuantity,
+  upsertV2StickerQuantity,
+  type V2AlbumState,
+} from "./lib/v2Album";
+import {
+  fetchV2PerfectTradesForProfile,
+  fetchV2SuggestionsForProfile,
+  type V2PerfectTradeSuggestion,
+  type V2Suggestion,
+} from "./lib/v2Suggestions";
+import {
+  createV2TradeRequest,
+  fetchV2TradeRequestsForProfile,
+  updateV2TradeRequestStatus,
+  type V2TradeRequest,
+  type V2TradeStatus,
+} from "./lib/v2Trades";
+import {
+  fetchV2CollectorsStats,
+  type V2CollectorStats,
+} from "./lib/v2Collectors";
+import {
+  fetchV2StockItems,
+  runV2StockCheck,
+  type V2StockItem,
+  type V2StockStatus,
+} from "./lib/v2Stock";
+import {
+  fetchV2AdminAlbum,
+  fetchV2AdminCollectors,
+  type V2AdminAlbumRow,
+} from "./lib/v2AdminAlbums";
 
-type FilterType = "all" | "owned" | "missing" | "duplicates";
-type PanelKey = "add" | "reports" | "progress" | "share" | "trades" | "backup";
-type PublicPanelKey = "repeated" | "missing" | "proposal";
+type V2PanelKey =
+  | "album"
+  | "suggestions"
+  | "trade-requests"
+  | "collectors"
+  | "stock"
+  | "admin";
 
-type CollectionState = Record<string, { diego: number; arthur: number }>;
+type V2AdminPanelKey = "users" | "albums";
+type V2AlbumFilter = "all" | "owned" | "missing" | "duplicates";
 
-const STORAGE_KEY = "cromos-mundial-2026-state-v1";
-
-function loadInitialState(): CollectionState {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch {
-    console.warn("Não foi possível carregar os dados guardados.");
-  }
-
-  return {};
+function getRoleLabel(role: V2Role) {
+  if (role === "super_admin") return "Super Admin";
+  if (role === "collector") return "Colecionador";
+  if (role === "viewer") return "Visualizador";
+  return "Colecionador";
 }
 
-function saveState(state: CollectionState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function getQuantity(state: CollectionState, stickerId: string, owner: AlbumOwner) {
-  return state[stickerId]?.[owner] ?? 0;
-}
-
-function getStatus(quantity: number) {
-  if (quantity === 0) return "Falta";
-  if (quantity === 1) return "Tenho";
-  return "Repetido";
-}
-
-function getOwnerName(owner: AlbumOwner) {
-  return USERS.find((user) => user.id === owner)?.name ?? owner;
+function getStickerQuantity(album: V2AlbumState, stickerId: string) {
+  return album[stickerId] ?? 0;
 }
 
 function getStickerById(stickerId: string) {
   return ALL_STICKERS.find((sticker) => sticker.id === stickerId);
 }
 
-function rowsToCollectionState(
-  rows: Array<{ album_owner: AlbumOwner; sticker_id: string; quantity: number }>
-): CollectionState {
-  const nextState: CollectionState = {};
-
-  rows.forEach((row) => {
-    if (!nextState[row.sticker_id]) {
-      nextState[row.sticker_id] = { diego: 0, arthur: 0 };
-    }
-
-    nextState[row.sticker_id][row.album_owner] = row.quantity;
-  });
-
-  return nextState;
+function getTradeStatusLabel(status: V2TradeStatus) {
+  if (status === "pending") return "Pendente";
+  if (status === "reserved") return "Reservada";
+  if (status === "accepted") return "Aceite";
+  if (status === "completed") return "Concluída";
+  return "Cancelada";
 }
 
-function calculateSummary(state: CollectionState, owner: AlbumOwner) {
+function getStockStatusLabel(status: V2StockStatus | null) {
+  if (status === "available") return "Disponível";
+  if (status === "unavailable") return "Indisponível";
+  return "A confirmar";
+}
+
+function formatStockDate(value: string | null) {
+  if (!value) return "Ainda não verificado";
+
+  return new Intl.DateTimeFormat("pt-PT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function calculateV2AlbumSummary(album: V2AlbumState) {
   const total = ALL_STICKERS.length;
   let owned = 0;
   let missing = 0;
   let duplicates = 0;
 
   ALL_STICKERS.forEach((sticker) => {
-    const quantity = getQuantity(state, sticker.id, owner);
+    const quantity = getStickerQuantity(album, sticker.id);
 
     if (quantity > 0) owned += 1;
     if (quantity === 0) missing += 1;
@@ -102,101 +124,319 @@ function calculateSummary(state: CollectionState, owner: AlbumOwner) {
   };
 }
 
-function getStockStatusLabel(status: StockStatus) {
-  if (status === "available") return "Disponível";
-  if (status === "unavailable") return "Indisponível";
-  return "A confirmar";
+function getStickerStatus(quantity: number) {
+  if (quantity === 0) return "Falta";
+  if (quantity === 1) return "Tenho";
+  return "Repetido";
 }
 
-function getStockStatusIcon(status: StockStatus) {
-  if (status === "available") return "🟢";
-  if (status === "unavailable") return "🔴";
-  return "🟡";
+function buildAlbumStateFromRows(rows: V2AdminAlbumRow[]) {
+  const album: V2AlbumState = {};
+
+  rows.forEach((row) => {
+    album[row.sticker_id] = row.quantity;
+  });
+
+  return album;
 }
 
-function formatStockDate(value: string | null) {
-  if (!value) return "Ainda não verificado";
+function V2AccordionHeader({
+  title,
+  subtitle,
+  isOpen,
+  onClick,
+}: {
+  title: string;
+  subtitle?: string;
+  isOpen: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button className="v2-accordion-header" onClick={onClick}>
+      <div>
+        <strong>{title}</strong>
+        {subtitle && <span>{subtitle}</span>}
+      </div>
 
-  return new Intl.DateTimeFormat("pt-PT", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
+      <em>{isOpen ? "−" : "+"}</em>
+    </button>
+  );
 }
 
-function getFriendlyStockMessage(statusText: string | null) {
-  if (!statusText) {
-    return "Ainda não existe leitura automática para esta loja.";
-  }
+function V2AdminAlbumsPanel() {
+  const [collectors, setCollectors] = useState<V2Profile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [albumRows, setAlbumRows] = useState<V2AdminAlbumRow[]>([]);
+  const [isLoadingCollectors, setIsLoadingCollectors] = useState(true);
+  const [isLoadingAlbum, setIsLoadingAlbum] = useState(false);
+  const [status, setStatus] = useState("A carregar colecionadores...");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<V2AlbumFilter>("all");
 
-  const text = statusText.toLowerCase();
+  const loadCollectors = async () => {
+    try {
+      setIsLoadingCollectors(true);
+      setStatus("A carregar colecionadores...");
 
-  if (
-    text.includes("http 403") ||
-    text.includes("403") ||
-    text.includes("forbidden")
-  ) {
-    return "Esta loja bloqueou a verificação automática. Usa o botão “Abrir loja” para confirmar diretamente.";
-  }
+      const rows = await fetchV2AdminCollectors();
 
-  if (
-    text.includes("http2") ||
-    text.includes("stream error") ||
-    text.includes("error sending request") ||
-    text.includes("sendrequest")
-  ) {
-    return "Não foi possível verificar automaticamente esta loja neste momento. Usa o botão “Abrir loja” para confirmar diretamente.";
-  }
+      setCollectors(rows);
+      setStatus(`${rows.length} colecionador(es) ativo(s).`);
 
-  if (
-    text.includes("erro ao consultar") ||
-    text.includes("typeerror") ||
-    text.includes("failed to fetch")
-  ) {
-    return "A verificação automática falhou nesta tentativa. Usa o botão “Abrir loja” para confirmar diretamente.";
-  }
+      if (!selectedProfileId && rows.length > 0) {
+        setSelectedProfileId(rows[0].id);
+      }
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar os colecionadores.");
+      alert("Não foi possível carregar os colecionadores.");
+    } finally {
+      setIsLoadingCollectors(false);
+    }
+  };
 
-  return statusText;
+  const loadAlbum = async (profileId: string) => {
+    if (!profileId) return;
+
+    try {
+      setIsLoadingAlbum(true);
+      setStatus("A carregar caderneta...");
+
+      const rows = await fetchV2AdminAlbum(profileId);
+
+      setAlbumRows(rows);
+      setStatus("Caderneta carregada.");
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar a caderneta.");
+      alert("Não foi possível carregar a caderneta.");
+    } finally {
+      setIsLoadingAlbum(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCollectors();
+  }, []);
+
+  useEffect(() => {
+    if (selectedProfileId) {
+      loadAlbum(selectedProfileId);
+    }
+  }, [selectedProfileId]);
+
+  const selectedCollector = collectors.find(
+    (collector) => collector.id === selectedProfileId
+  );
+
+  const album = useMemo(() => buildAlbumStateFromRows(albumRows), [albumRows]);
+  const summary = useMemo(() => calculateV2AlbumSummary(album), [album]);
+
+  const filteredStickers = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return ALL_STICKERS.filter((sticker) => {
+      const quantity = getStickerQuantity(album, sticker.id);
+
+      const matchesSearch =
+        !normalizedSearch ||
+        sticker.label.toLowerCase().includes(normalizedSearch) ||
+        sticker.name.toLowerCase().includes(normalizedSearch) ||
+        sticker.section.toLowerCase().includes(normalizedSearch) ||
+        sticker.code.toLowerCase().includes(normalizedSearch);
+
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "owned" && quantity > 0) ||
+        (filter === "missing" && quantity === 0) ||
+        (filter === "duplicates" && quantity > 1);
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [album, search, filter]);
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Administração</p>
+          <h2>Ver cadernetas</h2>
+          <p>{status}</p>
+        </div>
+
+        <button
+          onClick={() => selectedProfileId && loadAlbum(selectedProfileId)}
+          disabled={isLoadingCollectors || isLoadingAlbum || !selectedProfileId}
+        >
+          {isLoadingAlbum ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <div className="v2-admin-album-selector">
+        <label>
+          Colecionador
+          <select
+            value={selectedProfileId}
+            onChange={(event) => setSelectedProfileId(event.target.value)}
+          >
+            {collectors.map((collector) => (
+              <option key={collector.id} value={collector.id}>
+                {collector.display_name} (@{collector.username})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Pesquisar cromo
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: ARG 10, Brasil, Messi..."
+          />
+        </label>
+      </div>
+
+      {selectedCollector && (
+        <section className="v2-admin-album-owner">
+          <div>
+            <span>Caderneta de</span>
+            <strong>{selectedCollector.display_name}</strong>
+            <p>
+              @{selectedCollector.username} · {getRoleLabel(selectedCollector.role)}
+            </p>
+          </div>
+
+          <div className="v2-admin-album-percentage">
+            <strong>{summary.percentage}%</strong>
+            <span>completa</span>
+          </div>
+        </section>
+      )}
+
+      <section className="v2-album-summary compact">
+        <div>
+          <span>Total</span>
+          <strong>{summary.total}</strong>
+        </div>
+
+        <div>
+          <span>Já tem</span>
+          <strong>{summary.owned}</strong>
+        </div>
+
+        <div>
+          <span>Faltam</span>
+          <strong>{summary.missing}</strong>
+        </div>
+
+        <div>
+          <span>Repetidos</span>
+          <strong>{summary.duplicates}</strong>
+        </div>
+
+        <div className="highlight">
+          <span>Completo</span>
+          <strong>{summary.percentage}%</strong>
+        </div>
+      </section>
+
+      <div className="v2-progress-bar">
+        <div style={{ width: `${summary.percentage}%` }} />
+      </div>
+
+      <div className="v2-filter-buttons admin-album">
+        <button
+          className={filter === "all" ? "active" : ""}
+          onClick={() => setFilter("all")}
+        >
+          Todos
+        </button>
+
+        <button
+          className={filter === "owned" ? "active" : ""}
+          onClick={() => setFilter("owned")}
+        >
+          Tem
+        </button>
+
+        <button
+          className={filter === "missing" ? "active" : ""}
+          onClick={() => setFilter("missing")}
+        >
+          Faltam
+        </button>
+
+        <button
+          className={filter === "duplicates" ? "active" : ""}
+          onClick={() => setFilter("duplicates")}
+        >
+          Repetidos
+        </button>
+      </div>
+
+      <section className="v2-admin-album-list">
+        {filteredStickers.map((sticker) => {
+          const quantity = getStickerQuantity(album, sticker.id);
+          const statusLabel = getStickerStatus(quantity);
+          const duplicates = quantity > 1 ? quantity - 1 : 0;
+
+          return (
+            <article className="v2-admin-album-sticker" key={sticker.id}>
+              <div>
+                <span>{sticker.label}</span>
+                <strong>{sticker.name}</strong>
+                <p>{sticker.section}</p>
+              </div>
+
+              <div>
+                <em className={`v2-sticker-status ${statusLabel.toLowerCase()}`}>
+                  {statusLabel}
+                </em>
+
+                <strong>{quantity}</strong>
+
+                {duplicates > 0 && (
+                  <small>
+                    {duplicates} repetido{duplicates > 1 ? "s" : ""}
+                  </small>
+                )}
+              </div>
+            </article>
+          );
+        })}
+
+        {filteredStickers.length === 0 && (
+          <p className="empty-message">
+            Nenhum cromo encontrado com estes filtros.
+          </p>
+        )}
+      </section>
+    </section>
+  );
 }
 
-function StockPage() {
-  const [items, setItems] = useState<StockWatchItem[]>([]);
+function V2StockPage() {
+  const [items, setItems] = useState<V2StockItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCheckingNow, setIsCheckingNow] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("A carregar disponibilidade...");
-  const [openStockId, setOpenStockId] = useState<number | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
+  const [status, setStatus] = useState("A carregar stock...");
 
   const loadStock = async () => {
     try {
       setIsLoading(true);
-      setStatusMessage("A carregar disponibilidade...");
+      setStatus("A carregar stock...");
 
-      const stockItems = await fetchStockWatch();
+      const rows = await fetchV2StockItems();
 
-      setItems(stockItems);
-      setStatusMessage("Disponibilidade atualizada");
+      setItems(rows);
+      setStatus(`${rows.length} loja(s) monitorizada(s).`);
     } catch (error) {
       console.error(error);
-      setStatusMessage("Não foi possível carregar a disponibilidade.");
+      setStatus("Não foi possível carregar o stock.");
+      alert("Não foi possível carregar o stock.");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleCheckStockNow = async () => {
-    try {
-      setIsCheckingNow(true);
-      setStatusMessage("A verificar disponibilidade agora...");
-
-      await checkStockNow();
-      await loadStock();
-
-      setStatusMessage("Disponibilidade verificada agora");
-    } catch (error) {
-      console.error(error);
-      setStatusMessage("Não foi possível verificar agora.");
-      alert("Não foi possível verificar a disponibilidade agora.");
-    } finally {
-      setIsCheckingNow(false);
     }
   };
 
@@ -204,660 +444,833 @@ function StockPage() {
     loadStock();
   }, []);
 
-  const summary = useMemo(() => {
-    return {
-      available: items.filter((item) => item.status === "available").length,
-      unavailable: items.filter((item) => item.status === "unavailable").length,
-      unknown: items.filter((item) => item.status === "unknown").length,
-    };
-  }, [items]);
+  const handleCheckNow = async () => {
+    try {
+      setIsChecking(true);
+      setStatus("A verificar disponibilidade agora...");
 
-  const lastChecked = useMemo(() => {
-    const dates = items
-      .map((item) => item.last_checked_at)
-      .filter(Boolean)
-      .map((value) => new Date(String(value)).getTime())
-      .filter((value) => !Number.isNaN(value));
+      await runV2StockCheck();
+      await loadStock();
 
-    if (dates.length === 0) return null;
-
-    return new Date(Math.max(...dates)).toISOString();
-  }, [items]);
-
-  const toggleStockItem = (id: number) => {
-    setOpenStockId((current) => (current === id ? null : id));
+      setStatus("Verificação concluída.");
+      alert("Verificação de stock concluída.");
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível verificar o stock agora.";
+      setStatus(message);
+      alert(message);
+    } finally {
+      setIsChecking(false);
+    }
   };
 
+  const availableCount = items.filter((item) => item.status === "available").length;
+  const unavailableCount = items.filter(
+    (item) => item.status === "unavailable"
+  ).length;
+  const unknownCount = items.filter(
+    (item) => !item.status || item.status === "unknown"
+  ).length;
+
+  const lastChecked = items
+    .map((item) => item.last_checked_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
   return (
-    <main className="app stock-app">
-      <header className="hero public-hero">
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
         <div>
-          <p className="eyebrow">Stock online</p>
-          <h1>Saquetas Mundial 2026</h1>
-          <p className="subtitle">
-            Monitorização automática de disponibilidade online de saquetas Panini.
-          </p>
-          <p className="cloud-status">
-            ☁️ {isLoading || isCheckingNow ? "A atualizar..." : statusMessage}
-          </p>
-        </div>
-      </header>
-
-      <section className="trade-public-summary stock-summary card">
-        <div>
-          <span>Disponíveis</span>
-          <strong>{summary.available}</strong>
-        </div>
-        <div>
-          <span>Indisponíveis</span>
-          <strong>{summary.unavailable}</strong>
-        </div>
-        <div>
-          <span>A confirmar</span>
-          <strong>{summary.unknown}</strong>
-        </div>
-      </section>
-
-      <section className="stock-info card">
-        <div>
-          <strong>Última verificação</strong>
-          <span>{formatStockDate(lastChecked)}</span>
+          <p className="eyebrow dark">Stock</p>
+          <h2>Stock de saquetas</h2>
+          <p>{status}</p>
         </div>
 
-        <div>
-          <strong>Atualização automática</strong>
-          <span>3 vezes por dia: manhã, tarde e noite</span>
-        </div>
+        <div className="v2-stock-actions">
+          <button onClick={loadStock} disabled={isLoading || isChecking}>
+            {isLoading ? "A carregar..." : "Atualizar"}
+          </button>
 
-        <div>
-          <strong>Verificação manual</strong>
-          <button
-            className="stock-open-link"
-            type="button"
-            onClick={handleCheckStockNow}
-            disabled={isCheckingNow}
-          >
-            {isCheckingNow ? "A verificar..." : "Verificar agora"}
+          <button onClick={handleCheckNow} disabled={isLoading || isChecking}>
+            {isChecking ? "A verificar..." : "Verificar agora"}
           </button>
         </div>
+      </div>
+
+      <section className="v2-stock-summary">
+        <div className="available">
+          <span>Disponíveis</span>
+          <strong>{availableCount}</strong>
+        </div>
+
+        <div className="unavailable">
+          <span>Indisponíveis</span>
+          <strong>{unavailableCount}</strong>
+        </div>
+
+        <div className="unknown">
+          <span>A confirmar</span>
+          <strong>{unknownCount}</strong>
+        </div>
+
+        <div>
+          <span>Última verificação</span>
+          <strong>{formatStockDate(lastChecked ?? null)}</strong>
+        </div>
       </section>
 
-      <section className="stock-accordion-list">
-        {items.map((item) => {
-          const isOpen = openStockId === item.id;
+      <section className="v2-stock-list">
+        {items.map((item) => (
+          <details className="v2-stock-card" key={item.id}>
+            <summary>
+              <div>
+                <span className={`v2-stock-status ${item.status ?? "unknown"}`}>
+                  {getStockStatusLabel(item.status)}
+                </span>
+
+                <h3>{item.source}</h3>
+
+                <p>{item.product ?? "Produto Panini World Cup 2026"}</p>
+              </div>
+
+              <strong>{item.price ?? "—"}</strong>
+            </summary>
+
+            <div className="v2-stock-details">
+              <p>
+                Estado: <strong>{item.status_text ?? "Sem detalhe disponível."}</strong>
+              </p>
+
+              <p>
+                Última verificação: <strong>{formatStockDate(item.last_checked_at)}</strong>
+              </p>
+
+              <p>
+                Último sucesso: <strong>{formatStockDate(item.last_success_at)}</strong>
+              </p>
+
+              {item.notes && (
+                <p>
+                  Notas: <strong>{item.notes}</strong>
+                </p>
+              )}
+
+              <a href={item.url} target="_blank" rel="noreferrer">
+                Abrir loja
+              </a>
+            </div>
+          </details>
+        ))}
+
+        {items.length === 0 && !isLoading && (
+          <p className="empty-message">Ainda não existem lojas monitorizadas.</p>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function V2CollectorsPage({ currentProfile }: { currentProfile: V2Profile }) {
+  const [collectors, setCollectors] = useState<V2CollectorStats[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState("A carregar colecionadores...");
+  const [search, setSearch] = useState("");
+
+  const loadCollectors = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar colecionadores...");
+
+      const rows = await fetchV2CollectorsStats(ALL_STICKERS.length);
+
+      setCollectors(rows);
+      setStatus(`${rows.length} colecionador(es) ativo(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar os colecionadores.");
+      alert("Não foi possível carregar os colecionadores.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCollectors();
+  }, []);
+
+  const filteredCollectors = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) return collectors;
+
+    return collectors.filter((item) => {
+      return (
+        item.profile.display_name.toLowerCase().includes(normalizedSearch) ||
+        item.profile.username.toLowerCase().includes(normalizedSearch) ||
+        item.profile.role.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [collectors, search]);
+
+  const topCollector = collectors[0];
+  const totalDuplicates = collectors.reduce(
+    (total, item) => total + item.duplicates,
+    0
+  );
+  const totalOwned = collectors.reduce((total, item) => total + item.owned, 0);
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Plataforma</p>
+          <h2>Colecionadores</h2>
+          <p>{status}</p>
+        </div>
+
+        <button onClick={loadCollectors} disabled={isLoading}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <section className="v2-collectors-summary">
+        <div>
+          <span>Colecionadores ativos</span>
+          <strong>{collectors.length}</strong>
+        </div>
+
+        <div>
+          <span>Total de cromos registados</span>
+          <strong>{totalOwned}</strong>
+        </div>
+
+        <div>
+          <span>Total de repetidos</span>
+          <strong>{totalDuplicates}</strong>
+        </div>
+
+        <div className="highlight">
+          <span>Mais completo</span>
+          <strong>{topCollector ? `${topCollector.percentage}%` : "—"}</strong>
+        </div>
+      </section>
+
+      <div className="v2-collectors-search">
+        <label>
+          Pesquisar colecionador
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: Arthur, Diego, colecionador..."
+          />
+        </label>
+      </div>
+
+      <section className="v2-collectors-list">
+        {filteredCollectors.map((item, index) => {
+          const isCurrentUser = item.profile.id === currentProfile.id;
 
           return (
-            <article className={`stock-accordion card ${item.status}`} key={item.id}>
-              <button
-                className="stock-accordion-header"
-                onClick={() => toggleStockItem(item.id)}
-              >
-                <div className="stock-header-left">
-                  <span className="stock-status-icon-small">
-                    {getStockStatusIcon(item.status)}
-                  </span>
+            <article
+              className={`v2-collector-card ${isCurrentUser ? "current" : ""}`}
+              key={item.profile.id}
+            >
+              <div className="v2-collector-rank">
+                <span>#{index + 1}</span>
+              </div>
 
+              <div className="v2-collector-info">
+                <div className="v2-collector-header">
                   <div>
-                    <h2>{item.source_name}</h2>
-                    <p>{item.product_name}</p>
-                  </div>
-                </div>
-
-                <div className="stock-header-right">
-                  <span className={`stock-status ${item.status}`}>
-                    {getStockStatusLabel(item.status)}
-                  </span>
-
-                  {item.price && <span className="stock-price">{item.price}</span>}
-
-                  <strong className="stock-toggle">{isOpen ? "−" : "+"}</strong>
-                </div>
-              </button>
-
-              {isOpen && (
-                <div className="stock-accordion-content">
-                  <div className="stock-details">
+                    <h3>
+                      {item.profile.display_name}
+                      {isCurrentUser ? " · Tu" : ""}
+                    </h3>
                     <p>
-                      <strong>Última tentativa:</strong>{" "}
-                      {formatStockDate(item.last_checked_at)}
+                      @{item.profile.username} · {getRoleLabel(item.profile.role)}
                     </p>
-
-                    <p>
-                      <strong>Último sucesso:</strong>{" "}
-                      {formatStockDate(item.last_success_at)}
-                    </p>
-
-                    <p>
-                      <strong>Leitura automática:</strong>{" "}
-                      {getFriendlyStockMessage(item.status_text)}
-                    </p>
-
-                    {item.notes && (
-                      <p>
-                        <strong>Notas:</strong> {item.notes}
-                      </p>
-                    )}
                   </div>
 
-                  <a
-                    className="stock-open-link"
-                    href={item.product_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Abrir loja
-                  </a>
+                  <strong>{item.percentage}%</strong>
                 </div>
-              )}
+
+                <div className="v2-collector-progress">
+                  <div style={{ width: `${item.percentage}%` }} />
+                </div>
+
+                <div className="v2-collector-stats">
+                  <span>{item.owned} tem</span>
+                  <span>{item.missing} faltam</span>
+                  <span>{item.duplicates} repetidos</span>
+                </div>
+              </div>
             </article>
           );
         })}
 
-        {items.length === 0 && !isLoading && (
-          <section className="card empty-stock">
-            <p>Ainda não existem fontes de stock configuradas.</p>
-          </section>
+        {filteredCollectors.length === 0 && !isLoading && (
+          <p className="empty-message">Nenhum colecionador encontrado.</p>
         )}
       </section>
-    </main>
+    </section>
   );
 }
 
-function PublicTradesPage() {
-  const [state, setState] = useState<CollectionState>(() => loadInitialState());
-  const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([]);
-  const [cloudStatus, setCloudStatus] = useState("A carregar dados...");
-  const [openPublicPanel, setOpenPublicPanel] = useState<PublicPanelKey | null>("repeated");
-
-  const [wantedOwner, setWantedOwner] = useState<AlbumOwner>("diego");
-  const [wantedStickerId, setWantedStickerId] = useState("");
-  const [offeredOwner, setOfferedOwner] = useState<AlbumOwner>("diego");
-  const [offeredStickerCode, setOfferedStickerCode] = useState("");
-  const [personName, setPersonName] = useState("");
-  const [personContact, setPersonContact] = useState("");
-  const [message, setMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const loadPublicData = async () => {
-    try {
-      setCloudStatus("A carregar dados da cloud...");
-
-      const [rows, trades] = await Promise.all([
-        fetchCloudCollection(),
-        fetchTradeRequests(),
-      ]);
-
-      const cloudState = rowsToCollectionState(rows);
-      setState(cloudState);
-      saveState(cloudState);
-      setTradeRequests(trades);
-      setCloudStatus("Dados atualizados");
-    } catch (error) {
-      console.error(error);
-      setCloudStatus("Não foi possível carregar os dados.");
-    }
-  };
-
-  useEffect(() => {
-    loadPublicData();
-  }, []);
-
-  const repeatedAvailable = useMemo(() => {
-    const reservedCount = new Map<string, number>();
-
-    tradeRequests
-      .filter((request) => request.status === "pending" || request.status === "reserved")
-      .forEach((request) => {
-        const key = `${request.wanted_owner}:${request.wanted_sticker_id}`;
-        reservedCount.set(key, (reservedCount.get(key) ?? 0) + 1);
-      });
-
-    const result: Array<{
-      sticker: Sticker;
-      owner: AlbumOwner;
-      duplicateQty: number;
-      reservedQty: number;
-      availableQty: number;
-    }> = [];
-
-    ALL_STICKERS.forEach((sticker) => {
-      USERS.forEach((user) => {
-        const ownerId = user.id;
-        const quantity = getQuantity(state, sticker.id, ownerId);
-        const duplicateQty = Math.max(0, quantity - 1);
-        const reservedQty = reservedCount.get(`${ownerId}:${sticker.id}`) ?? 0;
-        const availableQty = Math.max(0, duplicateQty - reservedQty);
-
-        if (availableQty > 0) {
-          result.push({
-            sticker,
-            owner: ownerId,
-            duplicateQty,
-            reservedQty,
-            availableQty,
-          });
-        }
-      });
-    });
-
-    return result.sort((a, b) =>
-      `${a.owner}-${a.sticker.label}`.localeCompare(`${b.owner}-${b.sticker.label}`)
-    );
-  }, [state, tradeRequests]);
-
-  const repeatedByOwner = useMemo(() => {
-    return {
-      diego: repeatedAvailable.filter((item) => item.owner === "diego"),
-      arthur: repeatedAvailable.filter((item) => item.owner === "arthur"),
-    };
-  }, [repeatedAvailable]);
-
-  const missingByOwner = useMemo(() => {
-    return {
-      diego: ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, "diego") === 0),
-      arthur: ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, "arthur") === 0),
-    };
-  }, [state]);
-
-  const selectedWanted = repeatedAvailable.find(
-    (item) => item.owner === wantedOwner && item.sticker.id === wantedStickerId
-  );
-
-  const totalAvailable = repeatedAvailable.reduce((total, item) => total + item.availableQty, 0);
-
-  const handleSelectWanted = (owner: AlbumOwner, stickerId: string) => {
-    setWantedOwner(owner);
-    setWantedStickerId(stickerId);
-    setOpenPublicPanel("proposal");
-    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-  };
-
-  const handleSubmitTrade = async (event: FormEvent) => {
-    event.preventDefault();
-
-    if (!wantedStickerId) {
-      alert("Escolhe primeiro o cromo que queres reservar.");
-      return;
-    }
-
-    if (!offeredStickerCode.trim()) {
-      alert("Indica qual cromo vais entregar.");
-      return;
-    }
-
-    if (!personName.trim() || !personContact.trim()) {
-      alert("Indica o teu nome e contacto.");
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-
-      await createTradeRequest({
-        wanted_owner: wantedOwner,
-        wanted_sticker_id: wantedStickerId,
-        offered_owner: offeredOwner,
-        offered_sticker_code: offeredStickerCode,
-        person_name: personName,
-        person_contact: personContact,
-        message,
-      });
-
-      alert("Proposta enviada com sucesso. Obrigado!");
-      setWantedStickerId("");
-      setOfferedStickerCode("");
-      setPersonName("");
-      setPersonContact("");
-      setMessage("");
-      setOpenPublicPanel("repeated");
-
-      await loadPublicData();
-    } catch (error) {
-      console.error(error);
-      alert("Não foi possível enviar a proposta. Tenta novamente.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const renderPublicPanelHeader = (panel: PublicPanelKey, title: string) => (
-    <button
-      className="accordion-header"
-      onClick={() => setOpenPublicPanel((current) => (current === panel ? null : panel))}
-    >
-      <span>{title}</span>
-      <strong>{openPublicPanel === panel ? "−" : "+"}</strong>
-    </button>
-  );
-
-  return (
-    <main className="app public-app">
-      <header className="hero public-hero">
-        <div>
-          <p className="eyebrow">Trocas Panini</p>
-          <h1>Trocas Mundial 2026</h1>
-          <p className="subtitle">
-            Vê os cromos repetidos disponíveis, consulta o que ainda falta e propõe uma troca.
-          </p>
-          <p className="cloud-status">☁️ {cloudStatus}</p>
-        </div>
-      </header>
-
-      <section className="trade-public-summary card">
-        <div>
-          <span>Repetidos disponíveis</span>
-          <strong>{totalAvailable}</strong>
-        </div>
-        <div>
-          <span>Faltam ao Diego</span>
-          <strong>{missingByOwner.diego.length}</strong>
-        </div>
-        <div>
-          <span>Faltam ao Arthur</span>
-          <strong>{missingByOwner.arthur.length}</strong>
-        </div>
-      </section>
-
-      <section className="accordion card">
-        {renderPublicPanelHeader("repeated", "Repetidos disponíveis")}
-
-        {openPublicPanel === "repeated" && (
-          <div className="accordion-content">
-            <div className="public-two-columns">
-              <div className="public-owner-block">
-                <h2>Diego</h2>
-                <p>
-                  {repeatedByOwner.diego.reduce((total, item) => total + item.availableQty, 0)}{" "}
-                  cromos disponíveis
-                </p>
-
-                <div className="trade-sticker-grid compact">
-                  {repeatedByOwner.diego.map((item) => (
-                    <button
-                      key={`${item.owner}-${item.sticker.id}`}
-                      className={`trade-sticker ${
-                        wantedOwner === item.owner && wantedStickerId === item.sticker.id
-                          ? "selected"
-                          : ""
-                      }`}
-                      onClick={() => handleSelectWanted(item.owner, item.sticker.id)}
-                    >
-                      <span>{item.sticker.label}</span>
-                      <strong>{item.sticker.name}</strong>
-                      <small>{item.availableQty} disponível</small>
-                    </button>
-                  ))}
-                </div>
-
-                {repeatedByOwner.diego.length === 0 && (
-                  <p className="empty-message">Sem repetidos disponíveis para o Diego.</p>
-                )}
-              </div>
-
-              <div className="public-owner-block">
-                <h2>Arthur</h2>
-                <p>
-                  {repeatedByOwner.arthur.reduce((total, item) => total + item.availableQty, 0)}{" "}
-                  cromos disponíveis
-                </p>
-
-                <div className="trade-sticker-grid compact">
-                  {repeatedByOwner.arthur.map((item) => (
-                    <button
-                      key={`${item.owner}-${item.sticker.id}`}
-                      className={`trade-sticker ${
-                        wantedOwner === item.owner && wantedStickerId === item.sticker.id
-                          ? "selected"
-                          : ""
-                      }`}
-                      onClick={() => handleSelectWanted(item.owner, item.sticker.id)}
-                    >
-                      <span>{item.sticker.label}</span>
-                      <strong>{item.sticker.name}</strong>
-                      <small>{item.availableQty} disponível</small>
-                    </button>
-                  ))}
-                </div>
-
-                {repeatedByOwner.arthur.length === 0 && (
-                  <p className="empty-message">Sem repetidos disponíveis para o Arthur.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="accordion card">
-        {renderPublicPanelHeader("missing", "Cromos em falta")}
-
-        {openPublicPanel === "missing" && (
-          <div className="accordion-content">
-            <div className="public-two-columns">
-              <div className="public-owner-block">
-                <h2>Faltam ao Diego</h2>
-                <p>{missingByOwner.diego.length} cromos em falta</p>
-
-                <div className="mini-list">
-                  {missingByOwner.diego.map((sticker) => (
-                    <span key={sticker.id}>{sticker.label}</span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="public-owner-block">
-                <h2>Faltam ao Arthur</h2>
-                <p>{missingByOwner.arthur.length} cromos em falta</p>
-
-                <div className="mini-list">
-                  {missingByOwner.arthur.map((sticker) => (
-                    <span key={sticker.id}>{sticker.label}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="accordion card">
-        {renderPublicPanelHeader("proposal", "Propor uma troca")}
-
-        {openPublicPanel === "proposal" && (
-          <div className="accordion-content">
-            <form className="trade-form public-form" onSubmit={handleSubmitTrade}>
-              <h2>Propor troca</h2>
-
-              <p className="trade-form-help">
-                A tua proposta será enviada para nós e ficará pendente até ser confirmada.
-                Depois entraremos em contacto contigo pelo contacto indicado.
-              </p>
-
-              <div className="selected-trade-box">
-                <span>Cromo escolhido</span>
-                <strong>
-                  {selectedWanted
-                    ? `${getOwnerName(selectedWanted.owner)} — ${selectedWanted.sticker.label} ${selectedWanted.sticker.name}`
-                    : "Ainda não escolheste nenhum cromo"}
-                </strong>
-              </div>
-
-              <div className="form-grid">
-                <label>
-                  Para qual caderneta?
-                  <select
-                    value={wantedOwner}
-                    onChange={(event) => {
-                      setWantedOwner(event.target.value as AlbumOwner);
-                      setWantedStickerId("");
-                    }}
-                  >
-                    {USERS.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  Cromo que queres reservar
-                  <select
-                    value={wantedStickerId}
-                    onChange={(event) => setWantedStickerId(event.target.value)}
-                  >
-                    <option value="">Selecionar cromo</option>
-                    {repeatedAvailable
-                      .filter((item) => item.owner === wantedOwner)
-                      .map((item) => (
-                        <option key={item.sticker.id} value={item.sticker.id}>
-                          {item.sticker.label} — {item.sticker.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-
-                <label>
-                  Para quem é o cromo que vais entregar?
-                  <select
-                    value={offeredOwner}
-                    onChange={(event) => setOfferedOwner(event.target.value as AlbumOwner)}
-                  >
-                    {USERS.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  Cromo que vais entregar
-                  <input
-                    value={offeredStickerCode}
-                    onChange={(event) => setOfferedStickerCode(event.target.value)}
-                    placeholder="Ex: POR 3, ARG 10, FWC 0, CC 5"
-                  />
-                </label>
-
-                <label>
-                  O teu nome
-                  <input
-                    value={personName}
-                    onChange={(event) => setPersonName(event.target.value)}
-                    placeholder="Ex: João"
-                  />
-                </label>
-
-                <label>
-                  Contacto / WhatsApp
-                  <input
-                    value={personContact}
-                    onChange={(event) => setPersonContact(event.target.value)}
-                    placeholder="Ex: 91xxxxxxx"
-                  />
-                </label>
-
-                <label className="full">
-                  Mensagem opcional
-                  <textarea
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                    placeholder="Ex: Posso entregar no treino, na escola, etc."
-                  />
-                </label>
-              </div>
-
-              <button className="submit-trade" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "A enviar..." : "Enviar proposta de troca"}
-              </button>
-            </form>
-          </div>
-        )}
-      </section>
-    </main>
-  );
-}
-
-function PrivateApp() {
-  const [owner, setOwner] = useState<AlbumOwner>("diego");
-  const [state, setState] = useState<CollectionState>(() => loadInitialState());
-  const [selectedSection, setSelectedSection] = useState<string>("Todas");
-  const [filter, setFilter] = useState<FilterType>("all");
-  const [search, setSearch] = useState("");
-  const [cloudStatus, setCloudStatus] = useState("A ligar ao Supabase...");
-  const [isCloudLoading, setIsCloudLoading] = useState(true);
-  const [isMigrating, setIsMigrating] = useState(false);
-  const [openPanel, setOpenPanel] = useState<PanelKey | null>(null);
-  const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([]);
-  const [isLoadingTrades, setIsLoadingTrades] = useState(false);
-
-  const shareMissingRef = useRef<HTMLDivElement | null>(null);
-  const shareDuplicatesRef = useRef<HTMLDivElement | null>(null);
+function V2TradeRequestsPage({ profile }: { profile: V2Profile }) {
+  const [requests, setRequests] = useState<V2TradeRequest[]>([]);
+  const [users, setUsers] = useState<V2UserRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState("A carregar propostas...");
 
   const loadTradeRequests = async () => {
     try {
-      setIsLoadingTrades(true);
-      const requests = await fetchTradeRequests();
-      setTradeRequests(requests);
+      setIsLoading(true);
+      setStatus("A carregar propostas...");
+
+      const [tradeRows, userRows] = await Promise.all([
+        fetchV2TradeRequestsForProfile(profile.id),
+        fetchV2Users(),
+      ]);
+
+      setRequests(tradeRows);
+      setUsers(userRows);
+      setStatus(`${tradeRows.length} proposta(s) encontrada(s).`);
     } catch (error) {
       console.error(error);
+      setStatus("Não foi possível carregar as propostas.");
       alert("Não foi possível carregar as propostas de troca.");
     } finally {
-      setIsLoadingTrades(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    async function loadCloudData() {
-      try {
-        setIsCloudLoading(true);
-        setCloudStatus("A carregar dados da cloud...");
+    loadTradeRequests();
+  }, [profile.id]);
 
-        const [rows, requests] = await Promise.all([
-          fetchCloudCollection(),
-          fetchTradeRequests(),
-        ]);
+  const getUserName = (profileId: string) => {
+    return users.find((user) => user.id === profileId)?.display_name ?? "Utilizador";
+  };
 
-        const cloudState = rowsToCollectionState(rows);
+  const sentRequests = requests.filter(
+    (request) => request.from_profile_id === profile.id
+  );
+  const receivedRequests = requests.filter(
+    (request) => request.to_profile_id === profile.id
+  );
 
-        setState(cloudState);
-        saveState(cloudState);
-        setTradeRequests(requests);
-        setCloudStatus("Sincronizado com Supabase");
-      } catch (error) {
-        console.error(error);
-        setCloudStatus("Modo local: não foi possível ligar ao Supabase");
-      } finally {
-        setIsCloudLoading(false);
-      }
+  const handleStatusUpdate = async (
+    requestId: string,
+    nextStatus: V2TradeStatus
+  ) => {
+    try {
+      await updateV2TradeRequestStatus(requestId, nextStatus);
+      await loadTradeRequests();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível atualizar a proposta.");
     }
+  };
 
-    loadCloudData();
-  }, []);
+  const renderRequestCard = (
+    request: V2TradeRequest,
+    type: "sent" | "received"
+  ) => {
+    const wantedSticker = getStickerById(request.wanted_sticker_id);
+    const offeredSticker = request.offered_sticker_id
+      ? getStickerById(request.offered_sticker_id)
+      : null;
+
+    const otherPersonName =
+      type === "sent"
+        ? getUserName(request.to_profile_id)
+        : getUserName(request.from_profile_id);
+
+    return (
+      <article className="v2-trade-request-card" key={request.id}>
+        <div className="v2-trade-request-main">
+          <span className={`v2-trade-status ${request.status}`}>
+            {getTradeStatusLabel(request.status)}
+          </span>
+
+          <h3>
+            {type === "sent"
+              ? `Proposta enviada para ${otherPersonName}`
+              : `Proposta recebida de ${otherPersonName}`}
+          </h3>
+
+          <div className="v2-trade-request-flow">
+            <div>
+              <span>{type === "sent" ? "Queres receber" : "Pedem-te"}</span>
+              <strong>{wantedSticker?.label ?? request.wanted_sticker_id}</strong>
+              <p>{wantedSticker?.name ?? "Cromo"}</p>
+            </div>
+
+            <div className="v2-trade-arrow">⇄</div>
+
+            <div>
+              <span>{type === "sent" ? "Ofereces" : "Oferecem-te"}</span>
+              <strong>
+                {offeredSticker?.label ?? request.offered_sticker_id ?? "—"}
+              </strong>
+              <p>{offeredSticker?.name ?? "Sem cromo indicado"}</p>
+            </div>
+          </div>
+
+          {request.message && <p className="v2-trade-message">{request.message}</p>}
+        </div>
+
+        <div className="v2-trade-request-actions">
+          {type === "received" && request.status === "pending" && (
+            <button onClick={() => handleStatusUpdate(request.id, "accepted")}>
+              Aceitar
+            </button>
+          )}
+
+          {request.status !== "completed" && request.status !== "cancelled" && (
+            <>
+              <button onClick={() => handleStatusUpdate(request.id, "completed")}>
+                Concluir
+              </button>
+
+              <button
+                className="danger"
+                onClick={() => handleStatusUpdate(request.id, "cancelled")}
+              >
+                Cancelar
+              </button>
+            </>
+          )}
+        </div>
+      </article>
+    );
+  };
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Trocas</p>
+          <h2>Propostas de troca</h2>
+          <p>{status}</p>
+        </div>
+
+        <button onClick={loadTradeRequests} disabled={isLoading}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <section className="v2-suggestions-summary">
+        <div>
+          <span>Recebidas</span>
+          <strong>{receivedRequests.length}</strong>
+        </div>
+
+        <div>
+          <span>Enviadas</span>
+          <strong>{sentRequests.length}</strong>
+        </div>
+      </section>
+
+      <section className="v2-trade-requests-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Para ti</p>
+            <h3>Propostas recebidas</h3>
+          </div>
+          <span>{receivedRequests.length}</span>
+        </div>
+
+        <div className="v2-trade-requests-list">
+          {receivedRequests.map((request) => renderRequestCard(request, "received"))}
+
+          {receivedRequests.length === 0 && !isLoading && (
+            <p className="empty-message">Ainda não recebeste propostas de troca.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="v2-trade-requests-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Criadas por ti</p>
+            <h3>Propostas enviadas</h3>
+          </div>
+          <span>{sentRequests.length}</span>
+        </div>
+
+        <div className="v2-trade-requests-list">
+          {sentRequests.map((request) => renderRequestCard(request, "sent"))}
+
+          {sentRequests.length === 0 && !isLoading && (
+            <p className="empty-message">Ainda não enviaste propostas de troca.</p>
+          )}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
+  const [suggestions, setSuggestions] = useState<V2Suggestion[]>([]);
+  const [perfectTrades, setPerfectTrades] = useState<V2PerfectTradeSuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreatingTrade, setIsCreatingTrade] = useState(false);
+  const [status, setStatus] = useState("A carregar sugestões...");
+  const [search, setSearch] = useState("");
+
+  const loadSuggestions = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar sugestões...");
+
+      const [simpleRows, perfectRows] = await Promise.all([
+        fetchV2SuggestionsForProfile(profile),
+        fetchV2PerfectTradesForProfile(profile),
+      ]);
+
+      setSuggestions(simpleRows);
+      setPerfectTrades(perfectRows);
+
+      setStatus(
+        `${perfectRows.length} troca(s) perfeita(s) e ${simpleRows.length} sugestão(ões) simples.`
+      );
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar as sugestões.");
+      alert("Não foi possível carregar as sugestões de troca.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSuggestions();
+  }, [profile.id]);
+
+  const handleCreatePerfectTrade = async (trade: V2PerfectTradeSuggestion) => {
+    const confirmed = window.confirm(
+      `Queres propor esta troca a ${trade.other_name}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsCreatingTrade(true);
+      setStatus("A criar proposta de troca...");
+
+      await createV2TradeRequest({
+        group_id: null,
+        from_profile_id: profile.id,
+        to_profile_id: trade.other_profile_id,
+        wanted_sticker_id: trade.sticker_i_need_id,
+        offered_sticker_id: trade.sticker_they_need_id,
+        message: "Proposta criada a partir de uma troca perfeita sugerida pela app.",
+      });
+
+      setStatus("Proposta de troca criada.");
+      alert("Proposta de troca criada com sucesso.");
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível criar a proposta.");
+      alert("Não foi possível criar a proposta de troca.");
+    } finally {
+      setIsCreatingTrade(false);
+    }
+  };
+
+  const filteredSuggestions = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) return suggestions;
+
+    return suggestions.filter((suggestion) => {
+      const sticker = getStickerById(suggestion.sticker_id);
+
+      return (
+        suggestion.offered_by_name.toLowerCase().includes(normalizedSearch) ||
+        suggestion.offered_by_username.toLowerCase().includes(normalizedSearch) ||
+        sticker?.label.toLowerCase().includes(normalizedSearch) ||
+        sticker?.name.toLowerCase().includes(normalizedSearch) ||
+        sticker?.section.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [suggestions, search]);
+
+  const filteredPerfectTrades = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) return perfectTrades;
+
+    return perfectTrades.filter((trade) => {
+      const stickerINeed = getStickerById(trade.sticker_i_need_id);
+      const stickerTheyNeed = getStickerById(trade.sticker_they_need_id);
+
+      return (
+        trade.other_name.toLowerCase().includes(normalizedSearch) ||
+        trade.other_username.toLowerCase().includes(normalizedSearch) ||
+        stickerINeed?.label.toLowerCase().includes(normalizedSearch) ||
+        stickerINeed?.name.toLowerCase().includes(normalizedSearch) ||
+        stickerINeed?.section.toLowerCase().includes(normalizedSearch) ||
+        stickerTheyNeed?.label.toLowerCase().includes(normalizedSearch) ||
+        stickerTheyNeed?.name.toLowerCase().includes(normalizedSearch) ||
+        stickerTheyNeed?.section.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [perfectTrades, search]);
+
+  const suggestionsByUser = useMemo(() => {
+    const grouped = new Map<string, V2Suggestion[]>();
+
+    filteredSuggestions.forEach((suggestion) => {
+      const key = suggestion.offered_by_profile_id;
+      const current = grouped.get(key) ?? [];
+      current.push(suggestion);
+      grouped.set(key, current);
+    });
+
+    return Array.from(grouped.entries()).map(([profileId, rows]) => ({
+      profileId,
+      name: rows[0]?.offered_by_name ?? "Utilizador",
+      username: rows[0]?.offered_by_username ?? "",
+      rows,
+    }));
+  }, [filteredSuggestions]);
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Trocas</p>
+          <h2>Sugestões de troca</h2>
+          <p>
+            {profile.display_name} · {status}
+          </p>
+        </div>
+
+        <button onClick={loadSuggestions} disabled={isLoading || isCreatingTrade}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <section className="v2-suggestions-summary">
+        <div>
+          <span>Trocas perfeitas</span>
+          <strong>{perfectTrades.length}</strong>
+        </div>
+
+        <div>
+          <span>Sugestões simples</span>
+          <strong>{suggestions.length}</strong>
+        </div>
+
+        <div>
+          <span>Pessoas que podem ajudar</span>
+          <strong>{suggestionsByUser.length}</strong>
+        </div>
+      </section>
+
+      <div className="v2-suggestions-search">
+        <label>
+          Pesquisar sugestão
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: Arthur, ARG 10, Brasil..."
+          />
+        </label>
+      </div>
+
+      <section className="v2-perfect-trades-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Melhores oportunidades</p>
+            <h3>Trocas perfeitas</h3>
+          </div>
+          <span>{filteredPerfectTrades.length}</span>
+        </div>
+
+        <div className="v2-perfect-trades-list">
+          {filteredPerfectTrades.map((trade) => {
+            const stickerINeed = getStickerById(trade.sticker_i_need_id);
+            const stickerTheyNeed = getStickerById(trade.sticker_they_need_id);
+
+            return (
+              <article
+                className="v2-perfect-trade-card"
+                key={`${trade.other_profile_id}-${trade.sticker_i_need_id}-${trade.sticker_they_need_id}`}
+              >
+                <div className="v2-perfect-trade-person">
+                  <span>Troca com</span>
+                  <h4>{trade.other_name}</h4>
+                  <p>@{trade.other_username}</p>
+                </div>
+
+                <div className="v2-perfect-trade-flow">
+                  <div>
+                    <span>Tu recebes</span>
+                    <strong>{stickerINeed?.label ?? trade.sticker_i_need_id}</strong>
+                    <p>{stickerINeed?.name ?? "Cromo"}</p>
+                    <small>
+                      {trade.other_available_duplicates} disponível
+                      {trade.other_available_duplicates > 1 ? "is" : ""}
+                    </small>
+                  </div>
+
+                  <div className="v2-trade-arrow">⇄</div>
+
+                  <div>
+                    <span>{trade.other_name} recebe</span>
+                    <strong>
+                      {stickerTheyNeed?.label ?? trade.sticker_they_need_id}
+                    </strong>
+                    <p>{stickerTheyNeed?.name ?? "Cromo"}</p>
+                    <small>
+                      {trade.my_available_duplicates} disponível
+                      {trade.my_available_duplicates > 1 ? "is" : ""}
+                    </small>
+                  </div>
+                </div>
+
+                <button
+                  className="v2-propose-trade-button"
+                  onClick={() => handleCreatePerfectTrade(trade)}
+                  disabled={isCreatingTrade}
+                >
+                  {isCreatingTrade ? "A criar..." : "Propor esta troca"}
+                </button>
+              </article>
+            );
+          })}
+
+          {filteredPerfectTrades.length === 0 && !isLoading && (
+            <p className="empty-message">
+              Ainda não há trocas perfeitas para a tua caderneta.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="v2-simple-suggestions-section">
+        <div className="v2-subsection-title">
+          <div>
+            <p className="eyebrow dark">Ajuda possível</p>
+            <h3>Sugestões simples</h3>
+          </div>
+          <span>{filteredSuggestions.length}</span>
+        </div>
+
+        <section className="v2-suggestions-list">
+          {suggestionsByUser.map((group) => (
+            <article className="v2-suggestion-group" key={group.profileId}>
+              <div className="v2-suggestion-group-header">
+                <div>
+                  <span>Pode ajudar</span>
+                  <h3>{group.name}</h3>
+                  <p>@{group.username}</p>
+                </div>
+
+                <strong>{group.rows.length} cromo(s)</strong>
+              </div>
+
+              <div className="v2-suggestion-stickers">
+                {group.rows.map((suggestion) => {
+                  const sticker = getStickerById(suggestion.sticker_id);
+
+                  return (
+                    <div
+                      className="v2-suggestion-card"
+                      key={`${suggestion.offered_by_profile_id}-${suggestion.sticker_id}`}
+                    >
+                      <span>{sticker?.label ?? suggestion.sticker_id}</span>
+
+                      <div>
+                        <strong>{sticker?.name ?? "Cromo"}</strong>
+                        <p>{sticker?.section ?? "Secção desconhecida"}</p>
+                      </div>
+
+                      <small>
+                        {suggestion.available_duplicates} disponível
+                        {suggestion.available_duplicates > 1 ? "is" : ""}
+                      </small>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          ))}
+
+          {filteredSuggestions.length === 0 && !isLoading && (
+            <p className="empty-message">
+              Ainda não há sugestões simples para a tua caderneta.
+            </p>
+          )}
+        </section>
+      </section>
+    </section>
+  );
+}
+
+function V2AlbumPage({
+  profile,
+  onAlbumChanged,
+}: {
+  profile: V2Profile;
+  onAlbumChanged: () => void;
+}) {
+  const [album, setAlbum] = useState<V2AlbumState>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState("A carregar caderneta...");
+  const [selectedSection, setSelectedSection] = useState("Todas");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<V2AlbumFilter>("all");
+
+  const loadAlbum = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar caderneta...");
+
+      const state = await fetchV2Album(profile.id);
+
+      setAlbum(state);
+      setStatus("Caderneta sincronizada.");
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar a caderneta.");
+      alert("Não foi possível carregar a caderneta.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAlbum();
+  }, [profile.id]);
+
+  const summary = useMemo(() => calculateV2AlbumSummary(album), [album]);
 
   const sections = useMemo(() => {
     const uniqueSections = Array.from(
       new Set(ALL_STICKERS.map((sticker) => sticker.section))
     );
 
-    const sortedSections = uniqueSections.sort((a, b) =>
-      a.localeCompare(b, "pt", { sensitivity: "base" })
-    );
-
-    return ["Todas", ...sortedSections];
+    return [
+      "Todas",
+      ...uniqueSections.sort((a, b) =>
+        a.localeCompare(b, "pt", { sensitivity: "base" })
+      ),
+    ];
   }, []);
 
-  const currentUserName = USERS.find((user) => user.id === owner)?.name ?? "Diego";
-
-  const summary = useMemo(() => calculateSummary(state, owner), [state, owner]);
-  const diegoSummary = useMemo(() => calculateSummary(state, "diego"), [state]);
-  const arthurSummary = useMemo(() => calculateSummary(state, "arthur"), [state]);
-
   const filteredStickers = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
     return ALL_STICKERS.filter((sticker) => {
-      const quantity = getQuantity(state, sticker.id, owner);
-      const normalizedSearch = search.trim().toLowerCase();
+      const quantity = getStickerQuantity(album, sticker.id);
 
       const matchesSection =
         selectedSection === "Todas" || sticker.section === selectedSection;
@@ -877,807 +1290,910 @@ function PrivateApp() {
 
       return matchesSection && matchesSearch && matchesFilter;
     });
-  }, [state, owner, selectedSection, search, filter]);
+  }, [album, selectedSection, search, filter]);
 
-  const missingList = useMemo(() => {
-    return ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, owner) === 0);
-  }, [state, owner]);
+  const updateQuantity = async (sticker: Sticker, change: number) => {
+    const currentQuantity = getStickerQuantity(album, sticker.id);
+    const nextQuantity = Math.max(0, currentQuantity + change);
 
-  const duplicateList = useMemo(() => {
-    return ALL_STICKERS.filter((sticker) => getQuantity(state, sticker.id, owner) > 1);
-  }, [state, owner]);
+    if (nextQuantity === currentQuantity) return;
 
-  const sectionProgress = useMemo(() => {
-    return sections
-      .filter((section) => section !== "Todas")
-      .map((section) => {
-        const stickers = ALL_STICKERS.filter((sticker) => sticker.section === section);
-        const owned = stickers.filter((sticker) => getQuantity(state, sticker.id, owner) > 0).length;
-        const total = stickers.length;
-        const percentage = total > 0 ? Math.round((owned / total) * 100) : 0;
+    const previousAlbum = album;
 
-        return {
-          section,
-          owned,
-          total,
-          percentage,
-        };
-      })
-      .sort((a, b) => b.percentage - a.percentage || a.section.localeCompare(b.section));
-  }, [sections, state, owner]);
-
-  const exchangeSuggestions = useMemo(() => {
-    const diegoCanGiveToArthur: Sticker[] = [];
-    const arthurCanGiveToDiego: Sticker[] = [];
-
-    ALL_STICKERS.forEach((sticker) => {
-      const diegoQty = getQuantity(state, sticker.id, "diego");
-      const arthurQty = getQuantity(state, sticker.id, "arthur");
-
-      if (diegoQty > 1 && arthurQty === 0) {
-        diegoCanGiveToArthur.push(sticker);
-      }
-
-      if (arthurQty > 1 && diegoQty === 0) {
-        arthurCanGiveToDiego.push(sticker);
-      }
+    setAlbum({
+      ...album,
+      [sticker.id]: nextQuantity,
     });
 
-    return {
-      diegoCanGiveToArthur,
-      arthurCanGiveToDiego,
-    };
-  }, [state]);
-
-  const togglePanel = (panel: PanelKey) => {
-    setOpenPanel((current) => (current === panel ? null : panel));
-  };
-
-  const refreshFromCloud = async () => {
     try {
-      setIsCloudLoading(true);
-      setCloudStatus("A atualizar dados da cloud...");
+      setStatus("A guardar alteração...");
 
-      const [rows, requests] = await Promise.all([
-        fetchCloudCollection(),
-        fetchTradeRequests(),
-      ]);
+      await incrementV2StickerQuantity(
+        profile.id,
+        sticker.id,
+        currentQuantity,
+        change
+      );
 
-      const cloudState = rowsToCollectionState(rows);
-
-      setState(cloudState);
-      saveState(cloudState);
-      setTradeRequests(requests);
-      setCloudStatus("Sincronizado com Supabase");
+      setStatus("Caderneta sincronizada.");
+      onAlbumChanged();
     } catch (error) {
       console.error(error);
-      alert("Não foi possível atualizar os dados do Supabase.");
-      setCloudStatus("Erro ao sincronizar");
-    } finally {
-      setIsCloudLoading(false);
+      setAlbum(previousAlbum);
+      setStatus("Erro ao guardar alteração.");
+      alert("Não foi possível guardar esta alteração.");
     }
   };
 
-  const updateQuantity = async (stickerId: string, ownerId: AlbumOwner, change: number) => {
-    const currentQty = getQuantity(state, stickerId, ownerId);
-    const nextQty = Math.max(0, currentQty + change);
-    const realChange = nextQty - currentQty;
+  const setDirectQuantity = async (sticker: Sticker, quantityText: string) => {
+    const nextQuantity = Math.max(0, Number(quantityText) || 0);
+    const previousAlbum = album;
 
-    if (realChange === 0) return;
-
-    const previousState = state;
-
-    const nextState = {
-      ...state,
-      [stickerId]: {
-        diego: state[stickerId]?.diego ?? 0,
-        arthur: state[stickerId]?.arthur ?? 0,
-        [ownerId]: nextQty,
-      },
-    };
-
-    setState(nextState);
-    saveState(nextState);
-    setCloudStatus("A guardar alteração...");
-
-    try {
-      await incrementStickerQuantity(ownerId, stickerId, realChange);
-      setCloudStatus("Sincronizado com Supabase");
-    } catch (error) {
-      console.error(error);
-      setState(previousState);
-      saveState(previousState);
-      setCloudStatus("Erro ao guardar no Supabase");
-      alert("Não foi possível guardar esta alteração na cloud. A alteração foi revertida.");
-    }
-  };
-
-  const setDirectQuantity = async (
-    stickerId: string,
-    ownerId: AlbumOwner,
-    quantityText: string
-  ) => {
-    const quantity = Math.max(0, Number(quantityText) || 0);
-    const previousState = state;
-
-    const nextState = {
-      ...state,
-      [stickerId]: {
-        diego: state[stickerId]?.diego ?? 0,
-        arthur: state[stickerId]?.arthur ?? 0,
-        [ownerId]: quantity,
-      },
-    };
-
-    setState(nextState);
-    saveState(nextState);
-    setCloudStatus("A guardar alteração...");
-
-    try {
-      await upsertStickerQuantity(ownerId, stickerId, quantity);
-      setCloudStatus("Sincronizado com Supabase");
-    } catch (error) {
-      console.error(error);
-      setState(previousState);
-      saveState(previousState);
-      setCloudStatus("Erro ao guardar no Supabase");
-      alert("Não foi possível guardar esta alteração na cloud. A alteração foi revertida.");
-    }
-  };
-
-  const migrateLocalToCloud = async () => {
-    const confirmMigration = window.confirm(
-      "Isto vai enviar os dados guardados neste navegador para o Supabase. Queres continuar?"
-    );
-
-    if (!confirmMigration) return;
-
-    try {
-      setIsMigrating(true);
-      setCloudStatus("A migrar dados locais para Supabase...");
-
-      const localState = loadInitialState();
-      const result = await importLocalCollectionToCloud(localState);
-
-      await refreshFromCloud();
-
-      alert(`Migração concluída. Foram enviados ${result.inserted} registos para o Supabase.`);
-      setCloudStatus("Sincronizado com Supabase");
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao migrar dados locais para o Supabase.");
-      setCloudStatus("Erro na migração");
-    } finally {
-      setIsMigrating(false);
-    }
-  };
-
-  const resetLocalOnly = () => {
-    const confirmReset = window.confirm(
-      "Isto vai apagar apenas os dados locais deste navegador. Os dados do Supabase não serão apagados. Continuar?"
-    );
-
-    if (!confirmReset) return;
-
-    localStorage.removeItem(STORAGE_KEY);
-    setState({});
-    setCloudStatus("Dados locais apagados. Atualiza da cloud para recuperar.");
-  };
-
-  const exportBackup = () => {
-    const data = {
-      exportedAt: new Date().toISOString(),
-      app: "Cromos Mundial 2026",
-      version: 2,
-      source: "local-cache",
-      collection: state,
-    };
-
-    const file = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
+    setAlbum({
+      ...album,
+      [sticker.id]: nextQuantity,
     });
 
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "backup-cromos-mundial-2026.json";
-    link.click();
-
-    URL.revokeObjectURL(url);
-  };
-
-  const importBackup = (file: File | null) => {
-    if (!file) return;
-
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        const importedState = parsed.collection ?? parsed;
-
-        saveState(importedState);
-        setState(importedState);
-        alert(
-          "Backup importado localmente com sucesso. Para enviar para a cloud, usa o botão 'Migrar dados locais para Supabase'."
-        );
-      } catch {
-        alert("Erro ao importar backup. Verifica se o ficheiro é válido.");
-      }
-    };
-
-    reader.readAsText(file);
-  };
-
-  const quickAddByText = async () => {
-    const rawText = window.prompt(
-      "Escreve os cromos separados por espaço, vírgula ou quebra de linha. Exemplo: ARG 17, FWC 0, CC1"
-    );
-
-    if (!rawText) return;
-
-    const normalized = rawText
-      .replace(/\n/g, " ")
-      .replace(/,/g, " ")
-      .replace(/-/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .toUpperCase();
-
-    if (!normalized) return;
-
-    const parts = normalized.split(" ");
-    const candidates: string[] = [];
-
-    for (let index = 0; index < parts.length; index += 1) {
-      const current = parts[index];
-      const next = parts[index + 1];
-
-      if (/^[A-Z]{2,4}$/.test(current) && /^\d{1,2}$/.test(next ?? "")) {
-        candidates.push(`${current} ${Number(next)}`);
-        index += 1;
-      } else if (/^CC\d{1,2}$/.test(current)) {
-        candidates.push(current.replace("CC", "CC "));
-      } else if (/^FWC\d{1,2}$/.test(current)) {
-        candidates.push(current.replace("FWC", "FWC "));
-      }
-    }
-
-    const foundStickers = candidates
-      .map((candidate) =>
-        ALL_STICKERS.find(
-          (sticker) =>
-            sticker.label.toUpperCase() === candidate ||
-            sticker.label.toUpperCase().replace(" ", "") === candidate.replace(" ", "")
-        )
-      )
-      .filter(Boolean) as Sticker[];
-
-    if (foundStickers.length === 0) {
-      alert("Não encontrei nenhum cromo válido nesse texto.");
-      return;
-    }
-
-    for (const sticker of foundStickers) {
-      await updateQuantity(sticker.id, owner, 1);
-    }
-
-    alert(`${foundStickers.length} cromo(s) adicionados para ${currentUserName}.`);
-  };
-
-  const captureImage = async (element: HTMLDivElement | null, filename: string) => {
-    if (!element) return;
-
-    const canvas = await html2canvas(element, {
-      backgroundColor: "#f4f0f6",
-      scale: 2,
-    });
-
-    const url = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-  };
-
-  const updateTradeStatus = async (tradeRequestId: number, status: TradeStatus) => {
     try {
-      await updateTradeRequestStatus(tradeRequestId, status);
-      await loadTradeRequests();
-      alert("Estado da proposta atualizado.");
+      setStatus("A guardar alteração...");
+
+      await upsertV2StickerQuantity(profile.id, sticker.id, nextQuantity);
+
+      setStatus("Caderneta sincronizada.");
+      onAlbumChanged();
     } catch (error) {
       console.error(error);
-      alert("Não foi possível atualizar a proposta.");
+      setAlbum(previousAlbum);
+      setStatus("Erro ao guardar alteração.");
+      alert("Não foi possível guardar esta alteração.");
     }
   };
-
-  const renderPanelHeader = (panel: PanelKey, title: string) => (
-    <button className="accordion-header" onClick={() => togglePanel(panel)}>
-      <span>{title}</span>
-      <strong>{openPanel === panel ? "−" : "+"}</strong>
-    </button>
-  );
 
   return (
-    <main className="app">
-      <header className="hero">
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
         <div>
-          <p className="eyebrow">Caderneta Panini</p>
-          <h1>Cromos Mundial 2026</h1>
-          <p className="subtitle">
-            Controlo simples das cadernetas do Diego e do Arthur.
-          </p>
-          <p
-            className={`cloud-status ${
-              cloudStatus.includes("Erro") || cloudStatus.includes("local") ? "warning" : ""
-            }`}
-          >
-            {isCloudLoading ? "⏳ " : "☁️ "}
-            {cloudStatus}
+          <p className="eyebrow dark">Caderneta</p>
+          <h2>A minha caderneta</h2>
+          <p>
+            {profile.display_name} · {status}
           </p>
         </div>
 
-        <div className="owner-switch">
-          {USERS.map((user) => (
-            <button
-              key={user.id}
-              className={owner === user.id ? "active" : ""}
-              onClick={() => setOwner(user.id)}
-            >
-              {user.name}
-            </button>
-          ))}
-        </div>
-      </header>
+        <button onClick={loadAlbum} disabled={isLoading}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
 
-      <section className="dashboard compact-dashboard">
-        <div className="card stat">
-          <span>Caderneta</span>
-          <strong>{currentUserName}</strong>
+      <section className="v2-album-summary compact">
+        <div>
+          <span>Total</span>
+          <strong>{summary.total}</strong>
         </div>
-        <div className="card stat">
-          <span>Já tem</span>
+
+        <div>
+          <span>Já tenho</span>
           <strong>{summary.owned}</strong>
         </div>
-        <div className="card stat">
+
+        <div>
           <span>Faltam</span>
           <strong>{summary.missing}</strong>
         </div>
-        <div className="card stat">
+
+        <div>
           <span>Repetidos</span>
           <strong>{summary.duplicates}</strong>
         </div>
-        <div className="card stat highlight">
+
+        <div className="highlight">
           <span>Completo</span>
           <strong>{summary.percentage}%</strong>
         </div>
       </section>
 
-      <section className="progress-card card">
-        <div className="progress-header">
-          <strong>Progresso da caderneta do {currentUserName}</strong>
+      <div className="v2-progress-bar">
+        <div style={{ width: `${summary.percentage}%` }} />
+      </div>
+
+      <div className="v2-album-controls">
+        <label>
+          Secção / País
+          <select
+            value={selectedSection}
+            onChange={(event) => setSelectedSection(event.target.value)}
+          >
+            {sections.map((section) => (
+              <option key={section} value={section}>
+                {section}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Pesquisar
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: ARG 17, Messi, Brasil, FWC..."
+          />
+        </label>
+
+        <div className="v2-filter-buttons">
+          <button
+            className={filter === "all" ? "active" : ""}
+            onClick={() => setFilter("all")}
+          >
+            Todos
+          </button>
+
+          <button
+            className={filter === "owned" ? "active" : ""}
+            onClick={() => setFilter("owned")}
+          >
+            Tenho
+          </button>
+
+          <button
+            className={filter === "missing" ? "active" : ""}
+            onClick={() => setFilter("missing")}
+          >
+            Faltam
+          </button>
+
+          <button
+            className={filter === "duplicates" ? "active" : ""}
+            onClick={() => setFilter("duplicates")}
+          >
+            Repetidos
+          </button>
+        </div>
+      </div>
+
+      <section className="v2-stickers-list">
+        {filteredStickers.map((sticker) => {
+          const quantity = getStickerQuantity(album, sticker.id);
+          const statusLabel = getStickerStatus(quantity);
+          const duplicates = quantity > 1 ? quantity - 1 : 0;
+
+          return (
+            <article className="card v2-sticker-card" key={sticker.id}>
+              <div>
+                <span className="v2-sticker-label">{sticker.label}</span>
+                <h3>{sticker.name}</h3>
+                <p>{sticker.section}</p>
+              </div>
+
+              <div className="v2-sticker-actions">
+                <span className={`v2-sticker-status ${statusLabel.toLowerCase()}`}>
+                  {statusLabel}
+                </span>
+
+                {duplicates > 0 && (
+                  <small>
+                    {duplicates} repetido{duplicates > 1 ? "s" : ""}
+                  </small>
+                )}
+
+                <div className="v2-quantity-controls">
+                  <button onClick={() => updateQuantity(sticker, -1)}>-</button>
+
+                  <input
+                    value={quantity}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setDirectQuantity(sticker, event.target.value)
+                    }
+                  />
+
+                  <button onClick={() => updateQuantity(sticker, 1)}>+</button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+
+        {filteredStickers.length === 0 && (
+          <p className="empty-message">
+            Nenhum cromo encontrado com estes filtros.
+          </p>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function V2AdminUsers({ currentProfile }: { currentProfile: V2Profile }) {
+  const [users, setUsers] = useState<V2UserRow[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [status, setStatus] = useState("A carregar utilizadores...");
+
+  const [newUsername, setNewUsername] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<V2Role>("collector");
+
+  const loadUsers = async () => {
+    try {
+      setIsLoadingUsers(true);
+      setStatus("A carregar utilizadores...");
+
+      const rows = await fetchV2Users();
+
+      setUsers(rows);
+      setStatus(`${rows.length} utilizador(es) encontrado(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar os utilizadores.");
+      alert("Não foi possível carregar os utilizadores.");
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const handleCreateUser = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!newUsername.trim() || !newDisplayName.trim() || !newPassword.trim()) {
+      alert("Preenche username, nome e senha.");
+      return;
+    }
+
+    if (newPassword.trim().length < 6) {
+      alert("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    try {
+      setIsCreatingUser(true);
+      setStatus("A criar utilizador...");
+
+      await createV2User({
+        username: newUsername,
+        display_name: newDisplayName,
+        password: newPassword,
+        role: newRole,
+        group_slug: "familia-mello",
+      });
+
+      setNewUsername("");
+      setNewDisplayName("");
+      setNewPassword("");
+      setNewRole("collector");
+
+      await loadUsers();
+
+      alert("Utilizador criado com sucesso.");
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível criar o utilizador.";
+      setStatus(message);
+      alert(message);
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
+  const handleRoleChange = async (profileId: string, role: V2Role) => {
+    try {
+      await updateV2UserRole(profileId, role);
+      await loadUsers();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível alterar a role.");
+    }
+  };
+
+  const handleActiveChange = async (profileId: string, isActive: boolean) => {
+    try {
+      await updateV2UserActiveStatus(profileId, isActive);
+      await loadUsers();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível alterar o estado do utilizador.");
+    }
+  };
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Administração</p>
+          <h2>Gerir utilizadores</h2>
+          <p>{status}</p>
+        </div>
+
+        <button onClick={loadUsers} disabled={isLoadingUsers || isCreatingUser}>
+          {isLoadingUsers ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <form className="v2-create-user-form" onSubmit={handleCreateUser}>
+        <div>
+          <h3>Criar novo utilizador</h3>
+          <p>
+            O utilizador entra com username e senha. O email técnico é criado
+            automaticamente.
+          </p>
+        </div>
+
+        <div className="v2-create-user-grid">
+          <label>
+            Username
+            <input
+              value={newUsername}
+              onChange={(event) => setNewUsername(event.target.value)}
+              placeholder="Ex: joao"
+              autoCapitalize="none"
+            />
+          </label>
+
+          <label>
+            Nome
+            <input
+              value={newDisplayName}
+              onChange={(event) => setNewDisplayName(event.target.value)}
+              placeholder="Ex: João"
+            />
+          </label>
+
+          <label>
+            Senha inicial
+            <input
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              placeholder="Mínimo 6 caracteres"
+              type="password"
+            />
+          </label>
+
+          <label>
+            Role
+            <select
+              value={newRole}
+              onChange={(event) => setNewRole(event.target.value as V2Role)}
+            >
+              <option value="collector">Colecionador</option>
+              <option value="viewer">Visualizador</option>
+              {currentProfile.role === "super_admin" && (
+                <option value="super_admin">Super Admin</option>
+              )}
+            </select>
+          </label>
+        </div>
+
+        <button type="submit" disabled={isCreatingUser}>
+          {isCreatingUser ? "A criar..." : "Criar utilizador"}
+        </button>
+      </form>
+
+      <div className="v2-users-list">
+        {users.map((user) => {
+          const isCurrentUser = user.id === currentProfile.id;
+
+          return (
+            <article className="v2-user-row" key={user.id}>
+              <div className="v2-user-main">
+                <span className={`v2-user-status ${user.is_active ? "active" : "inactive"}`}>
+                  {user.is_active ? "Ativo" : "Inativo"}
+                </span>
+
+                <h3>{user.display_name}</h3>
+
+                <p>
+                  Username: <strong>{user.username}</strong>
+                </p>
+
+                {isCurrentUser && (
+                  <p className="v2-self-warning">
+                    Não podes alterar a tua própria role nem desativar o teu acesso.
+                  </p>
+                )}
+              </div>
+
+              <div className="v2-user-actions">
+                <label>
+                  Role
+                  <select
+                    value={user.role}
+                    disabled={isCurrentUser}
+                    onChange={(event) =>
+                      handleRoleChange(user.id, event.target.value as V2Role)
+                    }
+                  >
+                    <option value="super_admin">Super Admin</option>
+                    <option value="collector">Colecionador</option>
+                    <option value="viewer">Visualizador</option>
+                  </select>
+                </label>
+
+                <button
+                  className={user.is_active ? "danger" : ""}
+                  disabled={isCurrentUser}
+                  onClick={() => handleActiveChange(user.id, !user.is_active)}
+                >
+                  {isCurrentUser
+                    ? "O teu acesso"
+                    : user.is_active
+                      ? "Desativar"
+                      : "Ativar"}
+                </button>
+              </div>
+            </article>
+          );
+        })}
+
+        {users.length === 0 && !isLoadingUsers && (
+          <p className="empty-message">Ainda não existem utilizadores V2.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function V2Dashboard({
+  profile,
+  onSignOut,
+}: {
+  profile: V2Profile;
+  onSignOut: () => void;
+}) {
+  const [openPanel, setOpenPanel] = useState<V2PanelKey | null>("album");
+  const [adminPanel, setAdminPanel] = useState<V2AdminPanelKey>("users");
+  const [summaryAlbum, setSummaryAlbum] = useState<V2AlbumState>({});
+  const [summaryStatus, setSummaryStatus] = useState("A carregar progresso...");
+
+  const showAdmin = canViewAdmin(profile);
+  const summary = useMemo(() => calculateV2AlbumSummary(summaryAlbum), [summaryAlbum]);
+
+  const loadSummary = async () => {
+    try {
+      setSummaryStatus("A carregar progresso...");
+      const state = await fetchV2Album(profile.id);
+      setSummaryAlbum(state);
+      setSummaryStatus("Progresso atualizado.");
+    } catch (error) {
+      console.error(error);
+      setSummaryStatus("Não foi possível carregar o progresso.");
+    }
+  };
+
+  useEffect(() => {
+    loadSummary();
+  }, [profile.id]);
+
+  const togglePanel = (panel: V2PanelKey) => {
+    setOpenPanel((current) => (current === panel ? null : panel));
+  };
+
+  return (
+    <main className="app v2-app">
+      <header className="hero public-hero">
+        <div>
+          <p className="eyebrow">Cromos Mundial 2026</p>
+          <h1>V2 Plataforma Aberta</h1>
+          <p className="subtitle">
+            Colecionadores, cadernetas individuais e trocas automáticas entre todos.
+          </p>
+          <p className="cloud-status">
+            🔐 {profile.display_name} · {getRoleLabel(profile.role)} · {summaryStatus}
+          </p>
+        </div>
+
+        <button className="v2-logout-button" onClick={onSignOut}>
+          Sair
+        </button>
+      </header>
+
+      <section className="v2-main-summary card">
+        <div>
+          <span>Caderneta</span>
+          <strong>{profile.display_name}</strong>
+        </div>
+
+        <div>
+          <span>Já tenho</span>
+          <strong>{summary.owned}</strong>
+        </div>
+
+        <div>
+          <span>Faltam</span>
+          <strong>{summary.missing}</strong>
+        </div>
+
+        <div>
+          <span>Repetidos</span>
+          <strong>{summary.duplicates}</strong>
+        </div>
+
+        <div className="highlight">
+          <span>Completo</span>
+          <strong>{summary.percentage}%</strong>
+        </div>
+      </section>
+
+      <section className="v2-main-progress card">
+        <div className="v2-progress-header">
+          <strong>Progresso da tua caderneta</strong>
           <span>
             {summary.owned} de {summary.total}
           </span>
         </div>
-        <div className="progress-bar">
+
+        <div className="v2-progress-bar">
           <div style={{ width: `${summary.percentage}%` }} />
         </div>
       </section>
 
-      <section className="owners-comparison card">
-        <div>
-          <h3>Diego</h3>
-          <strong>{diegoSummary.percentage}% completo</strong>
-          <div className="small-progress">
-            <div style={{ width: `${diegoSummary.percentage}%` }} />
-          </div>
-          <p>
-            {diegoSummary.owned} tem · {diegoSummary.missing} faltam ·{" "}
-            {diegoSummary.duplicates} repetidos
-          </p>
-        </div>
+      <section className="v2-accordion-list">
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="A minha caderneta"
+            subtitle="Adicionar, remover e consultar cromos"
+            isOpen={openPanel === "album"}
+            onClick={() => togglePanel("album")}
+          />
 
-        <div>
-          <h3>Arthur</h3>
-          <strong>{arthurSummary.percentage}% completo</strong>
-          <div className="small-progress">
-            <div style={{ width: `${arthurSummary.percentage}%` }} />
-          </div>
-          <p>
-            {arthurSummary.owned} tem · {arthurSummary.missing} faltam ·{" "}
-            {arthurSummary.duplicates} repetidos
-          </p>
-        </div>
-      </section>
+          {openPanel === "album" && (
+            <div className="v2-accordion-content">
+              <V2AlbumPage profile={profile} onAlbumChanged={loadSummary} />
+            </div>
+          )}
+        </article>
 
-      <section className="quick-menu">
-        <button onClick={() => setOpenPanel("add")}>Adicionar cromos</button>
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Sugestões de troca"
+            subtitle="Trocas perfeitas e oportunidades simples"
+            isOpen={openPanel === "suggestions"}
+            onClick={() => togglePanel("suggestions")}
+          />
 
-        <button onClick={() => setOpenPanel("reports")}>Ver faltas</button>
+          {openPanel === "suggestions" && (
+            <div className="v2-accordion-content">
+              <V2SuggestionsPage profile={profile} />
+            </div>
+          )}
+        </article>
 
-        <button
-          onClick={() => {
-            setOpenPanel("reports");
-            setFilter("duplicates");
-          }}
-        >
-          Ver repetidos
-        </button>
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Propostas de troca"
+            subtitle="Enviadas, recebidas, aceites e concluídas"
+            isOpen={openPanel === "trade-requests"}
+            onClick={() => togglePanel("trade-requests")}
+          />
 
-        <a className="quick-menu-link" href="/?view=trocas">
-          Página pública de trocas
-        </a>
+          {openPanel === "trade-requests" && (
+            <div className="v2-accordion-content">
+              <V2TradeRequestsPage profile={profile} />
+            </div>
+          )}
+        </article>
 
-        <a className="quick-menu-link" href="/?view=stock">
-          Stock de saquetas
-        </a>
-      </section>
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Colecionadores"
+            subtitle="Ranking geral e progresso da plataforma"
+            isOpen={openPanel === "collectors"}
+            onClick={() => togglePanel("collectors")}
+          />
 
-      <section className="accordion card">
-        {renderPanelHeader("add", "Adicionar / atualizar cromos")}
+          {openPanel === "collectors" && (
+            <div className="v2-accordion-content">
+              <V2CollectorsPage currentProfile={profile} />
+            </div>
+          )}
+        </article>
 
-        {openPanel === "add" && (
-          <div className="accordion-content">
-            <section className="controls inner-controls">
-              <div className="control-group">
-                <label>Secção / País</label>
-                <select
-                  value={selectedSection}
-                  onChange={(event) => setSelectedSection(event.target.value)}
-                >
-                  {sections.map((section) => (
-                    <option key={section} value={section}>
-                      {section}
-                    </option>
-                  ))}
-                </select>
+        <article className="card v2-accordion-card">
+          <V2AccordionHeader
+            title="Stock de saquetas"
+            subtitle="Disponibilidade online em lojas monitorizadas"
+            isOpen={openPanel === "stock"}
+            onClick={() => togglePanel("stock")}
+          />
+
+          {openPanel === "stock" && (
+            <div className="v2-accordion-content">
+              <V2StockPage />
+            </div>
+          )}
+        </article>
+
+        {showAdmin && (
+          <article className="card v2-accordion-card admin">
+            <V2AccordionHeader
+              title="Administração"
+              subtitle="Gerir utilizadores e dados da plataforma"
+              isOpen={openPanel === "admin"}
+              onClick={() => togglePanel("admin")}
+            />
+
+            {openPanel === "admin" && (
+              <div className="v2-accordion-content">
+                <div className="v2-admin-tabs">
+                  <button
+                    className={adminPanel === "users" ? "active" : ""}
+                    onClick={() => setAdminPanel("users")}
+                  >
+                    Gerir utilizadores
+                  </button>
+
+                  <button
+                    className={adminPanel === "albums" ? "active" : ""}
+                    onClick={() => setAdminPanel("albums")}
+                  >
+                    Ver cadernetas
+                  </button>
+                </div>
+
+                {adminPanel === "users" ? (
+                  <V2AdminUsers currentProfile={profile} />
+                ) : (
+                  <V2AdminAlbumsPanel />
+                )}
               </div>
+            )}
+          </article>
+        )}
+      </section>
+    </main>
+  );
+}
 
-              <div className="control-group">
-                <label>Pesquisar</label>
+function V2LoginPage() {
+  const [profile, setProfile] = useState<V2Profile | null>(null);
+  const [mode, setMode] = useState<"login" | "signup">("login");
+
+  const [username, setUsername] = useState("daniel");
+  const [password, setPassword] = useState("");
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupDisplayName, setSignupDisplayName] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+
+  const [status, setStatus] = useState("A verificar sessão...");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isSigningUp, setIsSigningUp] = useState(false);
+
+  const loadProfile = async () => {
+    try {
+      setIsLoading(true);
+      const currentProfile = await getV2CurrentProfile();
+      setProfile(currentProfile);
+      setStatus(
+        currentProfile
+          ? "Sessão ativa"
+          : "Entra ou cria uma conta para começar."
+      );
+    } catch (error) {
+      console.error(error);
+      setProfile(null);
+      setStatus("Não foi possível carregar a sessão.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const handleSignIn = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!username.trim() || !password.trim()) {
+      alert("Preenche o utilizador e a senha.");
+      return;
+    }
+
+    try {
+      setIsSigningIn(true);
+      setStatus("A iniciar sessão...");
+
+      await v2SignIn(username, password);
+      await loadProfile();
+    } catch (error) {
+      console.error(error);
+      setStatus("Utilizador ou senha inválidos.");
+      alert("Utilizador ou senha inválidos.");
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handlePublicSignup = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!signupUsername.trim() || !signupDisplayName.trim() || !signupPassword.trim()) {
+      alert("Preenche nome, utilizador e senha.");
+      return;
+    }
+
+    if (signupPassword.trim().length < 6) {
+      alert("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    try {
+      setIsSigningUp(true);
+      setStatus("A criar conta...");
+
+      await v2PublicSignup({
+        username: signupUsername,
+        display_name: signupDisplayName,
+        password: signupPassword,
+      });
+
+      setStatus("Conta criada. A iniciar sessão...");
+
+      await v2SignIn(signupUsername, signupPassword);
+      await loadProfile();
+
+      setSignupUsername("");
+      setSignupDisplayName("");
+      setSignupPassword("");
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error ? error.message : "Não foi possível criar a conta.";
+      setStatus(message);
+      alert(message);
+    } finally {
+      setIsSigningUp(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await v2SignOut();
+      setProfile(null);
+      setPassword("");
+      setStatus("Sessão terminada.");
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível terminar sessão.");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <main className="app">
+        <header className="hero public-hero">
+          <div>
+            <p className="eyebrow">Cromos Mundial 2026</p>
+            <h1>V2</h1>
+            <p className="subtitle">A carregar a nova área multiutilizador...</p>
+            <p className="cloud-status">⏳ {status}</p>
+          </div>
+        </header>
+      </main>
+    );
+  }
+
+  if (profile) {
+    return <V2Dashboard profile={profile} onSignOut={handleSignOut} />;
+  }
+
+  return (
+    <main className="app v2-app">
+      <header className="hero public-hero">
+        <div>
+          <p className="eyebrow">Cromos Mundial 2026</p>
+          <h1>V2 Plataforma Aberta</h1>
+          <p className="subtitle">
+            Cria a tua conta, controla a tua caderneta e encontra trocas com outros
+            colecionadores.
+          </p>
+          <p className="cloud-status">🔐 {status}</p>
+        </div>
+      </header>
+
+      <section className="card v2-login-card">
+        <div className="v2-login-tabs">
+          <button
+            className={mode === "login" ? "active" : ""}
+            onClick={() => setMode("login")}
+          >
+            Entrar
+          </button>
+
+          <button
+            className={mode === "signup" ? "active" : ""}
+            onClick={() => setMode("signup")}
+          >
+            Criar conta
+          </button>
+        </div>
+
+        {mode === "login" ? (
+          <>
+            <h2>Entrar na V2</h2>
+            <p>Usa apenas o utilizador e a senha. Não é necessário email.</p>
+
+            <form className="v2-login-form" onSubmit={handleSignIn}>
+              <label>
+                Utilizador
                 <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Ex: ARG 17, Messi, Brasil, CC1..."
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="Ex: daniel"
+                  autoCapitalize="none"
+                  autoComplete="username"
                 />
-              </div>
+              </label>
 
-              <div className="filter-buttons">
-                <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
-                  Todos
-                </button>
-                <button className={filter === "owned" ? "active" : ""} onClick={() => setFilter("owned")}>
-                  Tenho
-                </button>
-                <button className={filter === "missing" ? "active" : ""} onClick={() => setFilter("missing")}>
-                  Faltam
-                </button>
-                <button
-                  className={filter === "duplicates" ? "active" : ""}
-                  onClick={() => setFilter("duplicates")}
-                >
-                  Repetidos
-                </button>
-              </div>
-            </section>
+              <label>
+                Senha
+                <input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Senha"
+                  type="password"
+                  autoComplete="current-password"
+                />
+              </label>
 
-            <div className="quick-add-box">
-              <button onClick={quickAddByText}>Entrada rápida por texto</button>
-              <p>Exemplo: ARG 17, FWC 0, CC1. Cada entrada soma +1 ao cromo.</p>
-            </div>
-
-            <section className="stickers-list">
-              {filteredStickers.map((sticker) => {
-                const quantity = getQuantity(state, sticker.id, owner);
-                const status = getStatus(quantity);
-                const duplicateQty = quantity > 1 ? quantity - 1 : 0;
-
-                return (
-                  <article key={sticker.id} className="sticker-card card">
-                    <div>
-                      <div className="sticker-label">{sticker.label}</div>
-                      <h3>{sticker.name}</h3>
-                      <p>{sticker.section}</p>
-                    </div>
-
-                    <div className="quantity-box">
-                      <span className={`status ${status.toLowerCase()}`}>{status}</span>
-
-                      {duplicateQty > 0 && (
-                        <span className="duplicate-note">
-                          {duplicateQty} repetido{duplicateQty > 1 ? "s" : ""}
-                        </span>
-                      )}
-
-                      <div className="quantity-controls">
-                        <button onClick={() => updateQuantity(sticker.id, owner, -1)}>-</button>
-                        <input
-                          value={quantity}
-                          inputMode="numeric"
-                          onChange={(event) =>
-                            setDirectQuantity(sticker.id, owner, event.target.value)
-                          }
-                          aria-label={`Quantidade de ${sticker.label}`}
-                        />
-                        <button onClick={() => updateQuantity(sticker.id, owner, 1)}>+</button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
-          </div>
-        )}
-      </section>
-
-      <section className="accordion card">
-        {renderPanelHeader("reports", "Relatórios")}
-
-        {openPanel === "reports" && (
-          <div className="accordion-content">
-            <section className="reports">
-              <div className="card report">
-                <h2>Faltam — {currentUserName}</h2>
-                <p>{missingList.length} cromos em falta</p>
-                <div className="mini-list">
-                  {missingList.slice(0, 120).map((sticker) => (
-                    <span key={sticker.id}>{sticker.label}</span>
-                  ))}
-                </div>
-                {missingList.length > 120 && <small>Mostrando os primeiros 120.</small>}
-              </div>
-
-              <div className="card report">
-                <h2>Repetidos — {currentUserName}</h2>
-                <p>{duplicateList.length} tipos de cromos repetidos</p>
-                <div className="mini-list">
-                  {duplicateList.slice(0, 120).map((sticker) => {
-                    const quantity = getQuantity(state, sticker.id, owner);
-                    return (
-                      <span key={sticker.id}>
-                        {sticker.label} +{quantity - 1}
-                      </span>
-                    );
-                  })}
-                </div>
-                {duplicateList.length === 0 && <small>Ainda não há repetidos.</small>}
-              </div>
-
-              <div className="card report">
-                <h2>Trocas entre irmãos</h2>
-
-                <h3>Diego pode dar ao Arthur</h3>
-                <div className="mini-list">
-                  {exchangeSuggestions.diegoCanGiveToArthur.slice(0, 80).map((sticker) => (
-                    <span key={sticker.id}>{sticker.label}</span>
-                  ))}
-                </div>
-                {exchangeSuggestions.diegoCanGiveToArthur.length === 0 && (
-                  <small>Nenhuma sugestão por enquanto.</small>
-                )}
-
-                <h3>Arthur pode dar ao Diego</h3>
-                <div className="mini-list">
-                  {exchangeSuggestions.arthurCanGiveToDiego.slice(0, 80).map((sticker) => (
-                    <span key={sticker.id}>{sticker.label}</span>
-                  ))}
-                </div>
-                {exchangeSuggestions.arthurCanGiveToDiego.length === 0 && (
-                  <small>Nenhuma sugestão por enquanto.</small>
-                )}
-              </div>
-            </section>
-          </div>
-        )}
-      </section>
-
-      <section className="accordion card">
-        {renderPanelHeader("trades", "Propostas de troca")}
-
-        {openPanel === "trades" && (
-          <div className="accordion-content">
-            <div className="trade-admin-header">
-              <div>
-                <h2>Propostas recebidas</h2>
-                <p>Gerir reservas e propostas enviadas pela página pública.</p>
-              </div>
-              <button onClick={loadTradeRequests} disabled={isLoadingTrades}>
-                {isLoadingTrades ? "A carregar..." : "Atualizar propostas"}
+              <button type="submit" disabled={isSigningIn}>
+                {isSigningIn ? "A entrar..." : "Entrar"}
               </button>
-            </div>
+            </form>
+          </>
+        ) : (
+          <>
+            <h2>Criar conta</h2>
+            <p>
+              Cria a tua conta de colecionador. Depois podes começar a registar a tua
+              caderneta.
+            </p>
 
-            <div className="trade-admin-list">
-              {tradeRequests.map((request) => {
-                const wantedSticker = getStickerById(request.wanted_sticker_id);
+            <form className="v2-login-form" onSubmit={handlePublicSignup}>
+              <label>
+                Nome público
+                <input
+                  value={signupDisplayName}
+                  onChange={(event) => setSignupDisplayName(event.target.value)}
+                  placeholder="Ex: João Silva"
+                />
+              </label>
 
-                return (
-                  <article className="trade-admin-card" key={request.id}>
-                    <div>
-                      <span className={`trade-status ${request.status}`}>
-                        {request.status}
-                      </span>
-                      <h3>{request.person_name}</h3>
-                      <p>
-                        Quer:{" "}
-                        <strong>
-                          {getOwnerName(request.wanted_owner)} —{" "}
-                          {wantedSticker?.label ?? request.wanted_sticker_id}
-                        </strong>
-                      </p>
-                      <p>
-                        Entrega para{" "}
-                        {request.offered_owner ? getOwnerName(request.offered_owner) : "—"}:{" "}
-                        <strong>{request.offered_sticker_code}</strong>
-                      </p>
-                      <p>
-                        Contacto: <strong>{request.person_contact}</strong>
-                      </p>
-                      {request.message && <p>Mensagem: {request.message}</p>}
-                    </div>
+              <label>
+                Utilizador
+                <input
+                  value={signupUsername}
+                  onChange={(event) => setSignupUsername(event.target.value)}
+                  placeholder="Ex: joao"
+                  autoCapitalize="none"
+                  autoComplete="username"
+                />
+              </label>
 
-                    <div className="trade-admin-actions">
-                      <button onClick={() => updateTradeStatus(request.id, "reserved")}>
-                        Reservar
-                      </button>
-                      <button onClick={() => updateTradeStatus(request.id, "completed")}>
-                        Concluir
-                      </button>
-                      <button className="danger" onClick={() => updateTradeStatus(request.id, "cancelled")}>
-                        Cancelar
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
+              <label>
+                Senha
+                <input
+                  value={signupPassword}
+                  onChange={(event) => setSignupPassword(event.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  type="password"
+                  autoComplete="new-password"
+                />
+              </label>
 
-              {tradeRequests.length === 0 && (
-                <p className="empty-message">Ainda não existem propostas de troca.</p>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="accordion card">
-        {renderPanelHeader("progress", "Progresso por país / secção")}
-
-        {openPanel === "progress" && (
-          <div className="accordion-content">
-            <section className="section-progress-grid">
-              {sectionProgress.map((item) => (
-                <div className="section-progress-card" key={item.section}>
-                  <div>
-                    <strong>{item.section}</strong>
-                    <span>
-                      {item.owned}/{item.total}
-                    </span>
-                  </div>
-                  <div className="small-progress">
-                    <div style={{ width: `${item.percentage}%` }} />
-                  </div>
-                  <p>{item.percentage}% completo</p>
-                </div>
-              ))}
-            </section>
-          </div>
-        )}
-      </section>
-
-      <section className="accordion card">
-        {renderPanelHeader("share", "Imagens para partilhar")}
-
-        {openPanel === "share" && (
-          <div className="accordion-content">
-            <div className="share-actions">
-              <button
-                onClick={() =>
-                  captureImage(
-                    shareMissingRef.current,
-                    `faltam-${currentUserName.toLowerCase()}-mundial-2026.png`
-                  )
-                }
-              >
-                Gerar imagem de faltas
+              <button type="submit" disabled={isSigningUp}>
+                {isSigningUp ? "A criar..." : "Criar conta e entrar"}
               </button>
-
-              <button
-                onClick={() =>
-                  captureImage(
-                    shareDuplicatesRef.current,
-                    `repetidos-${currentUserName.toLowerCase()}-mundial-2026.png`
-                  )
-                }
-              >
-                Gerar imagem de repetidos
-              </button>
-            </div>
-
-            <div className="share-preview-grid">
-              <div className="share-card" ref={shareMissingRef}>
-                <p className="eyebrow dark">Cromos Mundial 2026</p>
-                <h2>Faltam para {currentUserName}</h2>
-                <p className="share-subtitle">
-                  {missingList.length} cromos em falta · {summary.percentage}% completo
-                </p>
-                <div className="share-list">
-                  {missingList.slice(0, 90).map((sticker) => (
-                    <span key={sticker.id}>{sticker.label}</span>
-                  ))}
-                </div>
-                <footer>Trocas abertas ⚽ Panini World Cup 2026</footer>
-              </div>
-
-              <div className="share-card" ref={shareDuplicatesRef}>
-                <p className="eyebrow dark">Cromos Mundial 2026</p>
-                <h2>Repetidos de {currentUserName}</h2>
-                <p className="share-subtitle">
-                  {summary.duplicates} cromos repetidos disponíveis para troca
-                </p>
-                <div className="share-list">
-                  {duplicateList.slice(0, 90).map((sticker) => {
-                    const quantity = getQuantity(state, sticker.id, owner);
-                    return (
-                      <span key={sticker.id}>
-                        {sticker.label} +{quantity - 1}
-                      </span>
-                    );
-                  })}
-                </div>
-                <footer>Trocas abertas ⚽ Panini World Cup 2026</footer>
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="accordion card">
-        {renderPanelHeader("backup", "Backup e segurança")}
-
-        {openPanel === "backup" && (
-          <div className="accordion-content">
-            <section className="backup-panel">
-              <div>
-                <h2>Sincronização cloud</h2>
-                <p>
-                  Atualiza a app com os dados da cloud ou envia dados locais para o Supabase.
-                </p>
-              </div>
-
-              <div className="backup-actions">
-                <button onClick={refreshFromCloud} disabled={isCloudLoading || isMigrating}>
-                  Atualizar da cloud
-                </button>
-                <button onClick={migrateLocalToCloud} disabled={isCloudLoading || isMigrating}>
-                  {isMigrating ? "A migrar..." : "Migrar dados locais para Supabase"}
-                </button>
-              </div>
-            </section>
-
-            <section className="backup-panel secondary">
-              <div>
-                <h2>Backup local</h2>
-                <p>Exporta uma cópia JSON ou importa um backup antigo.</p>
-              </div>
-
-              <div className="backup-actions">
-                <button onClick={exportBackup}>Exportar backup</button>
-
-                <label className="import-button">
-                  Importar backup
-                  <input
-                    type="file"
-                    accept="application/json"
-                    onChange={(event) => importBackup(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-
-                <button className="danger" onClick={resetLocalOnly}>
-                  Apagar dados locais
-                </button>
-              </div>
-            </section>
-          </div>
+            </form>
+          </>
         )}
       </section>
     </main>
@@ -1685,17 +2201,7 @@ function PrivateApp() {
 }
 
 function App() {
-  const view = new URLSearchParams(window.location.search).get("view");
-
-  if (view === "trocas") {
-    return <PublicTradesPage />;
-  }
-
-  if (view === "stock") {
-    return <StockPage />;
-  }
-
-  return <PrivateApp />;
+  return <V2LoginPage />;
 }
 
 export default App;
