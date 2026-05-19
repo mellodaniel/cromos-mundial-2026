@@ -22,6 +22,10 @@ import {
   upsertV2StickerQuantity,
   type V2AlbumState,
 } from "./lib/v2Album";
+import {
+  fetchV2SuggestionsForProfile,
+  type V2Suggestion,
+} from "./lib/v2Suggestions";
 
 type V2Section =
   | "home"
@@ -44,6 +48,10 @@ function getRoleLabel(role: V2Role) {
 
 function getStickerQuantity(album: V2AlbumState, stickerId: string) {
   return album[stickerId] ?? 0;
+}
+
+function getStickerById(stickerId: string) {
+  return ALL_STICKERS.find((sticker) => sticker.id === stickerId);
 }
 
 function calculateV2AlbumSummary(album: V2AlbumState) {
@@ -73,6 +81,158 @@ function getStickerStatus(quantity: number) {
   if (quantity === 0) return "Falta";
   if (quantity === 1) return "Tenho";
   return "Repetido";
+}
+
+function V2SuggestionsPage({ profile }: { profile: V2Profile }) {
+  const [suggestions, setSuggestions] = useState<V2Suggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [status, setStatus] = useState("A carregar sugestões...");
+  const [search, setSearch] = useState("");
+
+  const loadSuggestions = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar sugestões...");
+
+      const rows = await fetchV2SuggestionsForProfile(profile);
+
+      setSuggestions(rows);
+      setStatus(`${rows.length} sugestão(ões) encontrada(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar as sugestões.");
+      alert("Não foi possível carregar as sugestões de troca.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSuggestions();
+  }, [profile.id]);
+
+  const filteredSuggestions = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return suggestions;
+    }
+
+    return suggestions.filter((suggestion) => {
+      const sticker = getStickerById(suggestion.sticker_id);
+
+      return (
+        suggestion.offered_by_name.toLowerCase().includes(normalizedSearch) ||
+        suggestion.offered_by_username.toLowerCase().includes(normalizedSearch) ||
+        sticker?.label.toLowerCase().includes(normalizedSearch) ||
+        sticker?.name.toLowerCase().includes(normalizedSearch) ||
+        sticker?.section.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [suggestions, search]);
+
+  const suggestionsByUser = useMemo(() => {
+    const grouped = new Map<string, V2Suggestion[]>();
+
+    filteredSuggestions.forEach((suggestion) => {
+      const key = suggestion.offered_by_profile_id;
+      const current = grouped.get(key) ?? [];
+      current.push(suggestion);
+      grouped.set(key, current);
+    });
+
+    return Array.from(grouped.entries()).map(([profileId, rows]) => ({
+      profileId,
+      name: rows[0]?.offered_by_name ?? "Utilizador",
+      username: rows[0]?.offered_by_username ?? "",
+      rows,
+    }));
+  }, [filteredSuggestions]);
+
+  return (
+    <section className="card v2-content-card">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Trocas</p>
+          <h2>Sugestões de troca</h2>
+          <p>
+            {profile.display_name} · {status}
+          </p>
+        </div>
+
+        <button onClick={loadSuggestions} disabled={isLoading}>
+          {isLoading ? "A carregar..." : "Atualizar"}
+        </button>
+      </div>
+
+      <section className="v2-suggestions-summary">
+        <div>
+          <span>Total de sugestões</span>
+          <strong>{suggestions.length}</strong>
+        </div>
+
+        <div>
+          <span>Pessoas que podem ajudar</span>
+          <strong>{suggestionsByUser.length}</strong>
+        </div>
+      </section>
+
+      <div className="v2-suggestions-search">
+        <label>
+          Pesquisar sugestão
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Ex: Arthur, ARG 10, Brasil..."
+          />
+        </label>
+      </div>
+
+      <section className="v2-suggestions-list">
+        {suggestionsByUser.map((group) => (
+          <article className="v2-suggestion-group" key={group.profileId}>
+            <div className="v2-suggestion-group-header">
+              <div>
+                <span>Pode ajudar</span>
+                <h3>{group.name}</h3>
+                <p>@{group.username}</p>
+              </div>
+
+              <strong>{group.rows.length} cromo(s)</strong>
+            </div>
+
+            <div className="v2-suggestion-stickers">
+              {group.rows.map((suggestion) => {
+                const sticker = getStickerById(suggestion.sticker_id);
+
+                return (
+                  <div className="v2-suggestion-card" key={`${suggestion.offered_by_profile_id}-${suggestion.sticker_id}`}>
+                    <span>{sticker?.label ?? suggestion.sticker_id}</span>
+
+                    <div>
+                      <strong>{sticker?.name ?? "Cromo"}</strong>
+                      <p>{sticker?.section ?? "Secção desconhecida"}</p>
+                    </div>
+
+                    <small>
+                      {suggestion.available_duplicates} disponível
+                      {suggestion.available_duplicates > 1 ? "is" : ""}
+                    </small>
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+        ))}
+
+        {filteredSuggestions.length === 0 && !isLoading && (
+          <p className="empty-message">
+            Ainda não há sugestões de troca para a tua caderneta.
+          </p>
+        )}
+      </section>
+    </section>
+  );
 }
 
 function V2AlbumPage({ profile }: { profile: V2Profile }) {
@@ -628,16 +788,7 @@ function V2Dashboard({
     }
 
     if (section === "suggestions") {
-      return (
-        <section className="card v2-content-card">
-          <p className="eyebrow dark">Trocas</p>
-          <h2>Sugestões de troca</h2>
-          <p>
-            Aqui a app vai comparar repetidos e faltas entre utilizadores do
-            mesmo grupo e sugerir trocas automaticamente.
-          </p>
-        </section>
-      );
+      return <V2SuggestionsPage profile={profile} />;
     }
 
     if (section === "group") {
