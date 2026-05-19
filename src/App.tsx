@@ -40,6 +40,12 @@ import {
   fetchV2CollectorsStats,
   type V2CollectorStats,
 } from "./lib/v2Collectors";
+import {
+  fetchV2StockItems,
+  runV2StockCheck,
+  type V2StockItem,
+  type V2StockStatus,
+} from "./lib/v2Stock";
 
 type V2PanelKey =
   | "album"
@@ -73,6 +79,21 @@ function getTradeStatusLabel(status: V2TradeStatus) {
   if (status === "accepted") return "Aceite";
   if (status === "completed") return "Concluída";
   return "Cancelada";
+}
+
+function getStockStatusLabel(status: V2StockStatus | null) {
+  if (status === "available") return "Disponível";
+  if (status === "unavailable") return "Indisponível";
+  return "A confirmar";
+}
+
+function formatStockDate(value: string | null) {
+  if (!value) return "Ainda não verificado";
+
+  return new Intl.DateTimeFormat("pt-PT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function calculateV2AlbumSummary(album: V2AlbumState) {
@@ -124,6 +145,166 @@ function V2AccordionHeader({
 
       <em>{isOpen ? "−" : "+"}</em>
     </button>
+  );
+}
+
+function V2StockPage() {
+  const [items, setItems] = useState<V2StockItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isChecking, setIsChecking] = useState(false);
+  const [status, setStatus] = useState("A carregar stock...");
+
+  const loadStock = async () => {
+    try {
+      setIsLoading(true);
+      setStatus("A carregar stock...");
+
+      const rows = await fetchV2StockItems();
+
+      setItems(rows);
+      setStatus(`${rows.length} loja(s) monitorizada(s).`);
+    } catch (error) {
+      console.error(error);
+      setStatus("Não foi possível carregar o stock.");
+      alert("Não foi possível carregar o stock.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStock();
+  }, []);
+
+  const handleCheckNow = async () => {
+    try {
+      setIsChecking(true);
+      setStatus("A verificar disponibilidade agora...");
+
+      await runV2StockCheck();
+      await loadStock();
+
+      setStatus("Verificação concluída.");
+      alert("Verificação de stock concluída.");
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível verificar o stock agora.";
+      setStatus(message);
+      alert(message);
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  const availableCount = items.filter((item) => item.status === "available").length;
+  const unavailableCount = items.filter(
+    (item) => item.status === "unavailable"
+  ).length;
+  const unknownCount = items.filter(
+    (item) => !item.status || item.status === "unknown"
+  ).length;
+
+  const lastChecked = items
+    .map((item) => item.last_checked_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  return (
+    <section className="v2-inner-section">
+      <div className="v2-section-header">
+        <div>
+          <p className="eyebrow dark">Stock</p>
+          <h2>Stock de saquetas</h2>
+          <p>{status}</p>
+        </div>
+
+        <div className="v2-stock-actions">
+          <button onClick={loadStock} disabled={isLoading || isChecking}>
+            {isLoading ? "A carregar..." : "Atualizar"}
+          </button>
+
+          <button onClick={handleCheckNow} disabled={isLoading || isChecking}>
+            {isChecking ? "A verificar..." : "Verificar agora"}
+          </button>
+        </div>
+      </div>
+
+      <section className="v2-stock-summary">
+        <div className="available">
+          <span>Disponíveis</span>
+          <strong>{availableCount}</strong>
+        </div>
+
+        <div className="unavailable">
+          <span>Indisponíveis</span>
+          <strong>{unavailableCount}</strong>
+        </div>
+
+        <div className="unknown">
+          <span>A confirmar</span>
+          <strong>{unknownCount}</strong>
+        </div>
+
+        <div>
+          <span>Última verificação</span>
+          <strong>{formatStockDate(lastChecked ?? null)}</strong>
+        </div>
+      </section>
+
+      <section className="v2-stock-list">
+        {items.map((item) => (
+          <details className="v2-stock-card" key={item.id}>
+            <summary>
+              <div>
+                <span className={`v2-stock-status ${item.status ?? "unknown"}`}>
+                  {getStockStatusLabel(item.status)}
+                </span>
+
+                <h3>{item.source}</h3>
+
+                <p>{item.product ?? "Produto Panini World Cup 2026"}</p>
+              </div>
+
+              <strong>{item.price ?? "—"}</strong>
+            </summary>
+
+            <div className="v2-stock-details">
+              <p>
+                Estado: <strong>{item.status_text ?? "Sem detalhe disponível."}</strong>
+              </p>
+
+              <p>
+                Última verificação:{" "}
+                <strong>{formatStockDate(item.last_checked_at)}</strong>
+              </p>
+
+              <p>
+                Último sucesso:{" "}
+                <strong>{formatStockDate(item.last_success_at)}</strong>
+              </p>
+
+              {item.notes && (
+                <p>
+                  Notas: <strong>{item.notes}</strong>
+                </p>
+              )}
+
+              <a href={item.url} target="_blank" rel="noreferrer">
+                Abrir loja
+              </a>
+            </div>
+          </details>
+        ))}
+
+        {items.length === 0 && !isLoading && (
+          <p className="empty-message">Ainda não existem lojas monitorizadas.</p>
+        )}
+      </section>
+    </section>
   );
 }
 
@@ -1451,21 +1632,14 @@ function V2Dashboard({
         <article className="card v2-accordion-card">
           <V2AccordionHeader
             title="Stock de saquetas"
-            subtitle="Módulo de disponibilidade online"
+            subtitle="Disponibilidade online em lojas monitorizadas"
             isOpen={openPanel === "stock"}
             onClick={() => togglePanel("stock")}
           />
 
           {openPanel === "stock" && (
             <div className="v2-accordion-content">
-              <section className="v2-inner-section">
-                <p className="eyebrow dark">Stock</p>
-                <h2>Stock de saquetas</h2>
-                <p>
-                  Aqui vamos ligar o módulo já existente de disponibilidade online das
-                  saquetas.
-                </p>
-              </section>
+              <V2StockPage />
             </div>
           )}
         </article>
