@@ -99,22 +99,15 @@ export async function fetchV2SuggestionsForProfile(profile: V2Profile) {
     ALL_STICKERS.forEach((sticker) => {
       const myQuantity = getQuantity(myAlbum, sticker.id);
       const otherQuantity = getQuantity(otherAlbum, sticker.id);
-      const otherDuplicates = Math.max(0, otherQuantity - 1);
+      const availableDuplicates = Math.max(0, otherQuantity - 1);
 
-      /**
-       * Regra correta:
-       * - Eu ainda NÃO tenho o cromo
-       * - O outro utilizador tem repetido
-       *
-       * Nunca sugerir cromos que eu já tenho.
-       */
-      if (myQuantity === 0 && otherDuplicates > 0) {
+      if (myQuantity === 0 && availableDuplicates > 0) {
         suggestions.push({
           sticker_id: sticker.id,
           offered_by_profile_id: otherProfile.id,
           offered_by_name: otherProfile.display_name,
           offered_by_username: otherProfile.username,
-          available_duplicates: otherDuplicates,
+          available_duplicates: availableDuplicates,
         });
       }
     });
