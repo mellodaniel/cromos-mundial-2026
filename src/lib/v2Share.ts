@@ -85,7 +85,6 @@ const COUNTRY_FLAGS: Record<string, string> = {
   "ecuador": "🇪🇨",
   "austria": "🇦🇹",
   "áustria": "🇦🇹",
-  "austria": "🇦🇹",
   "turquia": "🇹🇷",
   "türkiye": "🇹🇷",
   "turkey": "🇹🇷",
